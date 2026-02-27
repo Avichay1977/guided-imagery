@@ -1,0 +1,41 @@
+{
+  "app_title": "Guided Imagery",
+  "app_subtitle": "An inner journey of calm and peace",
+  "form": {
+    "mode_label": "Type",
+    "mode_imagery": "Guided Imagery",
+    "mode_hypnosis": "Self Hypnosis",
+    "depth_label": "Depth",
+    "depth_light": "Light",
+    "depth_light_desc": "Gentle relaxation",
+    "depth_medium": "Medium",
+    "depth_medium_desc": "Deep relaxation",
+    "depth_deep": "Deep",
+    "depth_deep_desc": "Full trance",
+    "age_label": "Audience",
+    "age_children": "Children",
+    "age_teens": "Teens",
+    "age_adults": "Adults",
+    "topic_label": "What would you like to work on?",
+    "topic_placeholder": "Write freely... e.g., Release anxiety, Better sleep, Self confidence, Pain management",
+    "duration_label": "Duration",
+    "minutes": "min",
+    "bells_label": "Background Bells",
+    "bells_off": "Off",
+    "bells_loud": "Loud",
+    "generate": "Begin Journey",
+    "generate_hypnosis": "Begin Hypnosis",
+    "generating": "Creating your meditation..."
+  },
+  "player": {
+    "play": "Play",
+    "pause": "Pause",
+    "show_script": "Show Script",
+    "hide_script": "Hide Script",
+    "new_session": "New Meditation"
+  },
+  "errors": {
+    "generation_failed": "Error creating meditation. Please try again.",
+    "connection_lost": "Connection lost. Please try again."
+  }
+}

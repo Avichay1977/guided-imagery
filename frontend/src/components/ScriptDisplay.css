@@ -1,0 +1,39 @@
+.script-display {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.script-toggle {
+  font-size: 0.9rem;
+  padding: 0.65rem 1.5rem;
+}
+
+.script-content {
+  max-height: 400px;
+  overflow-y: auto;
+  animation: fadeIn 0.4s ease;
+}
+
+.script-text {
+  font-size: 1rem;
+  line-height: 2;
+  color: var(--color-text-muted);
+  font-weight: 300;
+  white-space: pre-wrap;
+  text-align: start;
+}
+
+/* Scrollbar */
+.script-content::-webkit-scrollbar {
+  width: 4px;
+}
+
+.script-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.script-content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}

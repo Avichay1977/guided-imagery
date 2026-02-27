@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+google-genai
+elevenlabs
+pydub
+sse-starlette
+python-dotenv
+edge-tts
+phonikud
+phonikud-onnx
+huggingface-hub
+numpy
+static-ffmpeg

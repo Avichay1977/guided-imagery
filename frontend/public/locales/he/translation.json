@@ -1,0 +1,41 @@
+{
+  "app_title": "דמיון מודרך",
+  "app_subtitle": "מסע פנימי של שקט ורוגע",
+  "form": {
+    "mode_label": "סוג",
+    "mode_imagery": "דמיון מודרך",
+    "mode_hypnosis": "היפנוזה עצמית",
+    "depth_label": "עומק",
+    "depth_light": "קל",
+    "depth_light_desc": "הרפיה עדינה",
+    "depth_medium": "בינוני",
+    "depth_medium_desc": "רגיעה עמוקה",
+    "depth_deep": "עמוק",
+    "depth_deep_desc": "טראנס מלא",
+    "age_label": "קהל יעד",
+    "age_children": "ילדים",
+    "age_teens": "נוער",
+    "age_adults": "מבוגרים",
+    "topic_label": "מה תרצה לעבוד עליו?",
+    "topic_placeholder": "כתוב בחופשיות... למשל: שחרור חרדה, שינה טובה, ביטחון עצמי, התמודדות עם כאב",
+    "duration_label": "משך זמן",
+    "minutes": "דק׳",
+    "bells_label": "פעמונים ברקע",
+    "bells_off": "כבוי",
+    "bells_loud": "חזק",
+    "generate": "התחל מסע",
+    "generate_hypnosis": "התחל היפנוזה",
+    "generating": "יוצר את המדיטציה שלך..."
+  },
+  "player": {
+    "play": "נגן",
+    "pause": "השהה",
+    "show_script": "הצג טקסט",
+    "hide_script": "הסתר טקסט",
+    "new_session": "מדיטציה חדשה"
+  },
+  "errors": {
+    "generation_failed": "שגיאה ביצירת המדיטציה. נסה שוב.",
+    "connection_lost": "החיבור נותק. נסה שוב."
+  }
+}
