@@ -2,9 +2,10 @@ services:
   - type: web
     name: guided-imagery
     runtime: python
+    python: "3.11"
     buildCommand: |
       cd frontend && npm install && npm run build && cd ../backend && pip install -r requirements.txt
-    startCommand: cd backend && python main.py
+    startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: GOOGLE_API_KEY
         sync: false

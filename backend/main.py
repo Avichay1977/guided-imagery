@@ -16,9 +16,18 @@ from tts_service import generate_audio
 
 app = FastAPI(title="Guided Imagery")
 
+ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "https://guided-imagery.onrender.com",
+]
+# Allow custom origin from env
+if os.getenv("RENDER_EXTERNAL_URL"):
+    ALLOWED_ORIGINS.append(os.getenv("RENDER_EXTERNAL_URL"))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
