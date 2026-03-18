@@ -225,11 +225,17 @@ def _extract_video_id(url: str) -> str:
 @app.post("/api/youtube/captions")
 async def get_youtube_captions(req: YouTubeCaptionsRequest):
     """Fetch YouTube captions and translate them to target language."""
-    video_id = _extract_video_id(req.video_url)
+    try:
+        video_id = _extract_video_id(req.video_url)
+    except ValueError:
+        return {"error": "קישור יוטיוב לא תקין"}
 
     # Try to fetch captions in order of preference
-    ytt_api = YouTubeTranscriptApi()
-    transcript_list = ytt_api.list(video_id)
+    try:
+        ytt_api = YouTubeTranscriptApi()
+        transcript_list = ytt_api.list(video_id)
+    except Exception:
+        return {"error": "לא ניתן לגשת לכתוביות של הסרטון"}
 
     captions = None
     source_lang = None

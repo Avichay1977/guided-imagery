@@ -11,3 +11,4 @@ phonikud-onnx
 huggingface-hub
 numpy
 static-ffmpeg
+youtube-transcript-api
