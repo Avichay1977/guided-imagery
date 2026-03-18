@@ -1,5 +1,6 @@
 import json
 import asyncio
+import re
 import os
 from pathlib import Path
 from fastapi import FastAPI, Request
@@ -7,8 +8,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+from typing import Optional
 from sse_starlette.sse import EventSourceResponse
 from google import genai
+from youtube_transcript_api import YouTubeTranscriptApi
 
 from config import GOOGLE_API_KEY, GEMINI_MODEL, AUDIO_OUTPUT_DIR
 from prompt_template import build_meditation_prompt
@@ -191,12 +194,137 @@ RULES:
 TEXT TO TRANSLATE:
 {req.text}"""
 
-    response = await gemini_client.aio.models.generate_content(
+    response = await get_gemini_client().aio.models.generate_content(
         model=GEMINI_MODEL,
         contents=prompt,
     )
     translated = response.text.strip()
     return {"translated_text": translated}
+
+
+# ── YouTube Translation ─────────────────────────────────────────
+
+class YouTubeCaptionsRequest(BaseModel):
+    video_url: str = Field(..., min_length=5)
+    target_language: str = Field(default="he", pattern="^(he|en|ar|ru|fr|es|de)$")
+
+
+def _extract_video_id(url: str) -> str:
+    """Extract YouTube video ID from various URL formats."""
+    patterns = [
+        r'(?:v=|\/v\/|youtu\.be\/|embed\/)([a-zA-Z0-9_-]{11})',
+        r'^([a-zA-Z0-9_-]{11})$',
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+    raise ValueError("Invalid YouTube URL")
+
+
+@app.post("/api/youtube/captions")
+async def get_youtube_captions(req: YouTubeCaptionsRequest):
+    """Fetch YouTube captions and translate them to target language."""
+    video_id = _extract_video_id(req.video_url)
+
+    # Try to fetch captions in order of preference
+    ytt_api = YouTubeTranscriptApi()
+    transcript_list = ytt_api.list(video_id)
+
+    captions = None
+    source_lang = None
+
+    # 1. Try target language first (already translated by YouTube)
+    try:
+        captions = ytt_api.fetch(transcript_list, languages=[req.target_language])
+        source_lang = req.target_language
+    except Exception:
+        pass
+
+    # 2. Try English
+    if captions is None:
+        try:
+            captions = ytt_api.fetch(transcript_list, languages=["en"])
+            source_lang = "en"
+        except Exception:
+            pass
+
+    # 3. Try any available language
+    if captions is None:
+        try:
+            captions = ytt_api.fetch(transcript_list)
+            source_lang = "unknown"
+        except Exception:
+            return {"error": "No captions available for this video"}
+
+    segments = [
+        {"start": s.start, "duration": s.duration, "text": s.text}
+        for s in captions
+    ]
+
+    return {
+        "video_id": video_id,
+        "source_language": source_lang,
+        "segments": segments,
+    }
+
+
+@app.post("/api/youtube/translate-captions")
+async def translate_youtube_captions(request: Request):
+    """Translate caption segments to Hebrew using Gemini via SSE streaming."""
+    body = await request.json()
+    segments = body.get("segments", [])
+    target_language = body.get("target_language", "he")
+
+    if not segments:
+        return {"error": "No segments provided"}
+
+    lang_names = {"he": "עברית", "en": "English", "ar": "العربية", "ru": "Русский",
+                  "fr": "Français", "es": "Español", "de": "Deutsch"}
+    target_name = lang_names.get(target_language, target_language)
+
+    # Translate in batches of 20 segments for speed
+    BATCH_SIZE = 20
+    translated_segments = []
+
+    for i in range(0, len(segments), BATCH_SIZE):
+        batch = segments[i:i + BATCH_SIZE]
+        numbered_lines = "\n".join(
+            f"{j+1}. {seg['text']}" for j, seg in enumerate(batch)
+        )
+
+        prompt = f"""Translate these subtitle lines to {target_name}.
+
+RULES:
+- Return ONLY the numbered translations, one per line, same numbering
+- Keep translations concise and natural for subtitles
+- Do not add explanations or notes
+{"- Use modern spoken Hebrew, no nikud" if target_language == "he" else ""}
+
+{numbered_lines}"""
+
+        response = await get_gemini_client().aio.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+        )
+
+        lines = response.text.strip().split("\n")
+        for j, seg in enumerate(batch):
+            translated_text = seg["text"]  # fallback
+            for line in lines:
+                # Match "1. translated text" or "1) translated text"
+                match = re.match(rf'^{j+1}[\.\)]\s*(.+)', line)
+                if match:
+                    translated_text = match.group(1).strip()
+                    break
+            translated_segments.append({
+                "start": seg["start"],
+                "duration": seg["duration"],
+                "original": seg["text"],
+                "text": translated_text,
+            })
+
+    return {"segments": translated_segments}
 
 
 @app.get("/api/health")

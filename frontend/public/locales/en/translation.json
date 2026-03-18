@@ -37,6 +37,18 @@
     "translating": "Translating...",
     "new_session": "New Meditation"
   },
+  "youtube": {
+    "title": "YouTube Translator",
+    "subtitle": "Simultaneous Hebrew translation",
+    "nav_button": "YouTube Hebrew Translation",
+    "paste_url": "Paste YouTube link",
+    "translate": "Translate",
+    "loading": "Loading...",
+    "back": "Back",
+    "waiting": "Waiting for speech...",
+    "translating_captions": "Translating captions...",
+    "full_transcript": "Full Transcript"
+  },
   "errors": {
     "generation_failed": "Error creating meditation. Please try again.",
     "connection_lost": "Connection lost. Please try again."

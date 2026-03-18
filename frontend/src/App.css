@@ -212,6 +212,15 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* ===== Wide layout for YouTube ===== */
+.app-main-wide {
+  max-width: 720px;
+}
+
+.yt-nav-btn {
+  margin-top: 1rem;
+}
+
 /* ===== Responsive ===== */
 @media (max-width: 640px) {
   .app-title { font-size: 2rem; }
