@@ -51,6 +51,12 @@ class SessionRequest(BaseModel):
     bells_volume: int = Field(default=50, ge=0, le=100)
 
 
+class TranslateRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=50000)
+    source_language: str = Field(..., pattern="^(he|en)$")
+    target_language: str = Field(..., pattern="^(he|en)$")
+
+
 @app.post("/api/session")
 async def create_session(request: Request, session: SessionRequest):
     async def event_generator():
@@ -152,6 +158,39 @@ async def create_session(request: Request, session: SessionRequest):
             }
 
     return EventSourceResponse(event_generator())
+
+
+@app.post("/api/translate")
+async def translate_script(req: TranslateRequest):
+    """Translate a meditation script between Hebrew and English using Gemini."""
+    if req.source_language == req.target_language:
+        return {"translated_text": req.text}
+
+    lang_names = {"he": "Hebrew", "en": "English"}
+    source = lang_names[req.source_language]
+    target = lang_names[req.target_language]
+
+    prompt = f"""You are a professional translator specializing in meditation and guided imagery scripts.
+
+Translate the following {source} meditation script into {target}.
+
+RULES:
+- Preserve ALL pause markers exactly as they are: [pause], [short_pause], [long_pause], [breath]
+- Keep the same calm, flowing, therapeutic tone
+- Use natural {target} suitable for spoken meditation guidance
+- Do not add or remove content — translate faithfully
+- Output ONLY the translated text, nothing else
+{"- Use warm modern spoken Hebrew (no biblical/formal). No nikud (diacritics)." if req.target_language == "he" else "- Use warm, flowing English suitable for deep relaxation."}
+
+TEXT TO TRANSLATE:
+{req.text}"""
+
+    response = await gemini_client.aio.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=prompt,
+    )
+    translated = response.text.strip()
+    return {"translated_text": translated}
 
 
 @app.get("/api/health")

@@ -32,6 +32,9 @@
     "pause": "השהה",
     "show_script": "הצג טקסט",
     "hide_script": "הסתר טקסט",
+    "show_translation": "תרגום",
+    "hide_translation": "הסתר תרגום",
+    "translating": "מתרגם...",
     "new_session": "מדיטציה חדשה"
   },
   "errors": {

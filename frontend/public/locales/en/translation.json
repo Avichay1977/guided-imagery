@@ -32,6 +32,9 @@
     "pause": "Pause",
     "show_script": "Show Script",
     "hide_script": "Hide Script",
+    "show_translation": "Translate",
+    "hide_translation": "Hide Translation",
+    "translating": "Translating...",
     "new_session": "New Meditation"
   },
   "errors": {
