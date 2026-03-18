@@ -32,7 +32,22 @@
     "pause": "השהה",
     "show_script": "הצג טקסט",
     "hide_script": "הסתר טקסט",
+    "show_translation": "תרגום",
+    "hide_translation": "הסתר תרגום",
+    "translating": "מתרגם...",
     "new_session": "מדיטציה חדשה"
+  },
+  "youtube": {
+    "title": "תרגום יוטיוב",
+    "subtitle": "תרגום סימולטני לעברית",
+    "nav_button": "תרגום סימולטני ליוטיוב",
+    "paste_url": "הדבק קישור ליוטיוב",
+    "translate": "תרגם",
+    "loading": "טוען...",
+    "back": "חזרה",
+    "waiting": "ממתין לדיבור...",
+    "translating_captions": "מתרגם כתוביות...",
+    "full_transcript": "תמלול מלא"
   },
   "errors": {
     "generation_failed": "שגיאה ביצירת המדיטציה. נסה שוב.",
