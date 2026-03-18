@@ -8,7 +8,7 @@ import tempfile
 try:
     import static_ffmpeg
     static_ffmpeg.add_paths()
-except ImportError:
+except Exception:
     pass
 
 from pydub import AudioSegment

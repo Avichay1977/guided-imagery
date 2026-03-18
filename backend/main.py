@@ -38,7 +38,13 @@ app.mount("/audio", StaticFiles(directory=AUDIO_OUTPUT_DIR), name="audio")
 # Serve built frontend in production
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend" / "dist"
 
-gemini_client = genai.Client(api_key=GOOGLE_API_KEY)
+gemini_client = None
+
+def get_gemini_client():
+    global gemini_client
+    if gemini_client is None:
+        gemini_client = genai.Client(api_key=GOOGLE_API_KEY)
+    return gemini_client
 
 
 class SessionRequest(BaseModel):
@@ -84,7 +90,7 @@ async def create_session(request: Request, session: SessionRequest):
                 age_group=session.age_group,
             )
 
-            response = await gemini_client.aio.models.generate_content(
+            response = await get_gemini_client().aio.models.generate_content(
                 model=GEMINI_MODEL,
                 contents=prompt,
             )

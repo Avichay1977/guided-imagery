@@ -7,7 +7,7 @@ load_dotenv()
 try:
     import static_ffmpeg
     static_ffmpeg.add_paths()
-except ImportError:
+except Exception:
     pass
 
 # API Keys
