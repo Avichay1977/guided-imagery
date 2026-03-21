@@ -7,12 +7,11 @@ import AudioPlayer from './components/AudioPlayer'
 import ScriptDisplay from './components/ScriptDisplay'
 import LanguageToggle from './components/LanguageToggle'
 import YouTubeTranslator from './components/YouTubeTranslator'
-import MathCanvas from './components/MathCanvas/MathCanvas'
 
 function App() {
   const { t, i18n } = useTranslation()
   const { state, progress, result, error, generate, reset } = useSession()
-  const [page, setPage] = useState('home') // home | youtube | math
+  const [page, setPage] = useState('home') // home | youtube
 
   useEffect(() => {
     document.documentElement.dir = i18n.dir()
@@ -35,7 +34,7 @@ function App() {
     <div className="app">
       <div className="app-bg" />
 
-      <header className={`app-header ${page === 'math' ? 'app-main-hidden' : ''}`}>
+      <header className="app-header">
         <LanguageToggle />
         <h1 className="app-title">
           {page === 'youtube' ? t('youtube.title') : t('app_title')}
@@ -45,33 +44,20 @@ function App() {
         </p>
       </header>
 
-      {page === 'math' && (
-        <MathCanvas onBack={() => setPage('home')} />
-      )}
-
-      <main className={`app-main ${page === 'youtube' ? 'app-main-wide' : ''} ${page === 'math' ? 'app-main-hidden' : ''}`}>
+      <main className={`app-main ${page === 'youtube' ? 'app-main-wide' : ''}`}>
         {page === 'youtube' ? (
           <YouTubeTranslator onBack={() => setPage('home')} />
-        ) : page !== 'math' ? (
+        ) : (
           <>
             {state === 'idle' && (
               <>
-                <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', justifyContent: 'center' }}>
-                  <button
-                    className="btn btn-secondary"
-                    onClick={() => setPage('math')}
-                    style={{ background: 'linear-gradient(135deg, rgba(255,215,0,0.15), rgba(255,170,0,0.1))', border: '1px solid rgba(255,215,0,0.3)', color: '#ffd700', padding: '10px 20px', borderRadius: '12px', fontSize: '15px' }}
-                  >
-                    Visual Math Canvas
-                  </button>
-                  <button
-                    className="btn btn-secondary yt-nav-btn"
-                    onClick={() => setPage('youtube')}
-                  >
-                    {t('youtube.nav_button')}
-                  </button>
-                </div>
                 <SessionForm onSubmit={handleGenerate} />
+                <button
+                  className="btn btn-secondary yt-nav-btn"
+                  onClick={() => setPage('youtube')}
+                >
+                  {t('youtube.nav_button')}
+                </button>
               </>
             )}
 
@@ -98,7 +84,7 @@ function App() {
               </div>
             )}
           </>
-        ) : null}
+        )}
       </main>
     </div>
   )
