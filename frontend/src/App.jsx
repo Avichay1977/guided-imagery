@@ -56,20 +56,22 @@ function App() {
           <>
             {state === 'idle' && (
               <>
+                <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', justifyContent: 'center' }}>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => setPage('math')}
+                    style={{ background: 'linear-gradient(135deg, rgba(255,215,0,0.15), rgba(255,170,0,0.1))', border: '1px solid rgba(255,215,0,0.3)', color: '#ffd700', padding: '10px 20px', borderRadius: '12px', fontSize: '15px' }}
+                  >
+                    Visual Math Canvas
+                  </button>
+                  <button
+                    className="btn btn-secondary yt-nav-btn"
+                    onClick={() => setPage('youtube')}
+                  >
+                    {t('youtube.nav_button')}
+                  </button>
+                </div>
                 <SessionForm onSubmit={handleGenerate} />
-                <button
-                  className="btn btn-secondary yt-nav-btn"
-                  onClick={() => setPage('youtube')}
-                >
-                  {t('youtube.nav_button')}
-                </button>
-                <button
-                  className="btn btn-secondary yt-nav-btn"
-                  onClick={() => setPage('math')}
-                  style={{ marginTop: '8px' }}
-                >
-                  Visual Math Canvas
-                </button>
               </>
             )}
 
