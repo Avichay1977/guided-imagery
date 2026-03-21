@@ -229,3 +229,5 @@ body {
   .card { padding: 1.5rem; }
   .app-bg { width: 350px; height: 350px; }
 }
+
+.app-main-hidden { display: none; }

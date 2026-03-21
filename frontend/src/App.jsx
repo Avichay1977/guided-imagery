@@ -7,11 +7,12 @@ import AudioPlayer from './components/AudioPlayer'
 import ScriptDisplay from './components/ScriptDisplay'
 import LanguageToggle from './components/LanguageToggle'
 import YouTubeTranslator from './components/YouTubeTranslator'
+import MathCanvas from './components/MathCanvas/MathCanvas'
 
 function App() {
   const { t, i18n } = useTranslation()
   const { state, progress, result, error, generate, reset } = useSession()
-  const [page, setPage] = useState('home') // home | youtube
+  const [page, setPage] = useState('home') // home | youtube | math
 
   useEffect(() => {
     document.documentElement.dir = i18n.dir()
@@ -34,7 +35,7 @@ function App() {
     <div className="app">
       <div className="app-bg" />
 
-      <header className="app-header">
+      <header className={`app-header ${page === 'math' ? 'app-main-hidden' : ''}`}>
         <LanguageToggle />
         <h1 className="app-title">
           {page === 'youtube' ? t('youtube.title') : t('app_title')}
@@ -44,10 +45,14 @@ function App() {
         </p>
       </header>
 
-      <main className={`app-main ${page === 'youtube' ? 'app-main-wide' : ''}`}>
+      {page === 'math' && (
+        <MathCanvas onBack={() => setPage('home')} />
+      )}
+
+      <main className={`app-main ${page === 'youtube' ? 'app-main-wide' : ''} ${page === 'math' ? 'app-main-hidden' : ''}`}>
         {page === 'youtube' ? (
           <YouTubeTranslator onBack={() => setPage('home')} />
-        ) : (
+        ) : page !== 'math' ? (
           <>
             {state === 'idle' && (
               <>
@@ -57,6 +62,13 @@ function App() {
                   onClick={() => setPage('youtube')}
                 >
                   {t('youtube.nav_button')}
+                </button>
+                <button
+                  className="btn btn-secondary yt-nav-btn"
+                  onClick={() => setPage('math')}
+                  style={{ marginTop: '8px' }}
+                >
+                  Visual Math Canvas
                 </button>
               </>
             )}
@@ -84,7 +96,7 @@ function App() {
               </div>
             )}
           </>
-        )}
+        ) : null}
       </main>
     </div>
   )
