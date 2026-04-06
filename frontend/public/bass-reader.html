@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Bass Performance Reader</title>
+<style>
+:root {
+  --bg: #0a0a0f;
+  --surface: #14141f;
+  --surface2: #1e1e2e;
+  --border: #2a2a3a;
+  --text: #e8e8f0;
+  --text-dim: #6a6a80;
+  --accent: #4fc3f7;
+  --accent-glow: rgba(79, 195, 247, 0.3);
+  --active: #00e676;
+  --active-glow: rgba(0, 230, 118, 0.4);
+  --warn: #ff9800;
+  --section-a: #4fc3f7;
+  --section-b: #ab47bc;
+  --section-c: #66bb6a;
+  --section-d: #ef5350;
+  --section-e: #ffa726;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+
+body {
+  font-family: -apple-system, 'SF Pro Display', 'Helvetica Neue', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+  height: 100vh;
+  height: 100dvh;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ===== SCREEN: SETLIST ===== */
+#setlist-screen, #editor-screen, #perform-screen {
+  display:none; position:absolute; inset:0; flex-direction:column;
+}
+#setlist-screen.active, #editor-screen.active, #perform-screen.active { display:flex; }
+
+.screen-header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding: 12px 16px; background:var(--surface); border-bottom:1px solid var(--border);
+  min-height:56px;
+}
+.screen-header h1 { font-size:20px; font-weight:700; }
+.screen-header .btn {
+  background:var(--surface2); border:1px solid var(--border); color:var(--text);
+  padding:8px 16px; border-radius:8px; font-size:15px; cursor:pointer;
+  transition: all 0.15s;
+}
+.screen-header .btn:active { transform:scale(0.95); }
+.screen-header .btn-accent { background:var(--accent); color:#000; border-color:var(--accent); font-weight:600; }
+
+/* Setlist */
+.setlist-body { flex:1; overflow-y:auto; padding:12px; }
+.song-card {
+  background:var(--surface); border:1px solid var(--border); border-radius:12px;
+  padding:16px; margin-bottom:10px; display:flex; align-items:center; gap:12px;
+  cursor:pointer; transition: all 0.15s;
+}
+.song-card:active { transform:scale(0.98); background:var(--surface2); }
+.song-card .song-num {
+  width:32px; height:32px; border-radius:50%; background:var(--accent);
+  color:#000; display:flex; align-items:center; justify-content:center;
+  font-weight:700; font-size:14px; flex-shrink:0;
+}
+.song-card .song-info { flex:1; }
+.song-card .song-title { font-size:17px; font-weight:600; }
+.song-card .song-meta { font-size:13px; color:var(--text-dim); margin-top:2px; }
+.song-card .song-actions { display:flex; gap:8px; }
+.song-card .song-actions button {
+  width:36px; height:36px; border-radius:8px; border:1px solid var(--border);
+  background:var(--surface2); color:var(--text-dim); font-size:16px; cursor:pointer;
+}
+
+/* ===== SCREEN: EDITOR ===== */
+.editor-body { flex:1; overflow-y:auto; padding:16px; }
+.form-group { margin-bottom:16px; }
+.form-group label { display:block; font-size:13px; color:var(--text-dim); margin-bottom:6px; font-weight:600; }
+.form-group input, .form-group select, .form-group textarea {
+  width:100%; background:var(--surface); border:1px solid var(--border);
+  color:var(--text); padding:10px 12px; border-radius:8px; font-size:16px;
+  font-family:inherit;
+}
+.form-group textarea { min-height:80px; resize:vertical; font-family:'SF Mono',monospace; font-size:14px; }
+.form-row { display:flex; gap:12px; }
+.form-row .form-group { flex:1; }
+
+.tap-tempo-btn {
+  background:var(--accent); color:#000; border:none; padding:12px 24px;
+  border-radius:8px; font-size:16px; font-weight:700; cursor:pointer;
+  transition: all 0.1s;
+}
+.tap-tempo-btn:active { transform:scale(0.93); }
+.tap-tempo-val { font-size:28px; font-weight:700; color:var(--accent); margin-right:12px; }
+
+.section-editor {
+  background:var(--surface); border:1px solid var(--border); border-radius:12px;
+  padding:12px; margin-bottom:10px;
+}
+.section-editor .section-header {
+  display:flex; align-items:center; gap:8px; margin-bottom:10px;
+}
+.section-editor .section-color {
+  width:12px; height:12px; border-radius:50%;
+}
+.section-editor .section-name-input {
+  flex:1; background:transparent; border:none; color:var(--text);
+  font-size:16px; font-weight:600;
+}
+.section-editor .remove-section {
+  background:none; border:none; color:var(--text-dim); font-size:20px; cursor:pointer;
+}
+.add-section-btn {
+  width:100%; padding:12px; background:var(--surface); border:2px dashed var(--border);
+  color:var(--text-dim); border-radius:12px; font-size:15px; cursor:pointer;
+  transition: all 0.15s;
+}
+.add-section-btn:active { border-color:var(--accent); color:var(--accent); }
+
+/* ===== SCREEN: PERFORM ===== */
+#perform-screen { background:var(--bg); }
+
+.perform-top {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:8px 12px; background:var(--surface); border-bottom:1px solid var(--border);
+  min-height:48px;
+}
+.perform-top .song-name { font-size:16px; font-weight:700; flex:1; text-align:center; }
+.perform-top button {
+  width:40px; height:40px; border-radius:8px; border:1px solid var(--border);
+  background:var(--surface2); color:var(--text); font-size:18px; cursor:pointer;
+}
+
+.perform-main { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+
+/* Current chord display */
+.chord-display {
+  display:flex; align-items:center; justify-content:center; gap:20px;
+  padding:16px; flex-shrink:0;
+}
+.chord-now {
+  font-size:min(20vw, 120px); font-weight:900; color:var(--active);
+  text-shadow:0 0 40px var(--active-glow);
+  line-height:1; letter-spacing:-2px;
+  transition: all 0.15s;
+}
+.chord-next-box {
+  display:flex; flex-direction:column; align-items:center; gap:2px;
+}
+.chord-next-label { font-size:11px; color:var(--text-dim); text-transform:uppercase; }
+.chord-next {
+  font-size:min(8vw, 48px); font-weight:700; color:var(--text-dim);
+  line-height:1;
+}
+
+/* Section + bar info */
+.bar-info {
+  display:flex; align-items:center; justify-content:center; gap:16px;
+  padding:4px 16px; flex-shrink:0;
+}
+.bar-info .section-badge {
+  padding:4px 12px; border-radius:6px; font-size:13px; font-weight:700;
+  text-transform:uppercase;
+}
+.bar-info .bar-counter { font-size:15px; color:var(--text-dim); }
+
+/* Chord grid */
+.chord-grid-container {
+  flex:1; overflow-y:auto; padding:8px 12px 120px;
+  -webkit-overflow-scrolling:touch;
+}
+.grid-section {
+  margin-bottom:12px; transition: opacity 0.5s;
+}
+.grid-section.past { opacity:0.35; }
+.grid-section-label {
+  font-size:12px; font-weight:700; text-transform:uppercase;
+  padding:4px 10px; border-radius:4px; display:inline-block; margin-bottom:6px;
+}
+.grid-bars {
+  display:grid; grid-template-columns:repeat(4, 1fr); gap:4px;
+}
+.grid-bar {
+  background:var(--surface); border:1px solid var(--border); border-radius:6px;
+  padding:8px 4px; text-align:center; font-size:15px; font-weight:600;
+  cursor:pointer; transition: all 0.15s; position:relative;
+}
+.grid-bar.active {
+  background:var(--active); color:#000; border-color:var(--active);
+  box-shadow:0 0 16px var(--active-glow);
+  transform:scale(1.05);
+}
+.grid-bar .bar-num {
+  position:absolute; top:2px; left:4px; font-size:9px; font-weight:400;
+  color:var(--text-dim); opacity:0.6;
+}
+.grid-bar.active .bar-num { color:#000; opacity:0.7; }
+
+/* Transport bar */
+.transport {
+  position:absolute; bottom:0; left:0; right:0;
+  background:var(--surface); border-top:1px solid var(--border);
+  padding:8px 12px; padding-bottom:max(8px, env(safe-area-inset-bottom));
+}
+.progress-bar {
+  height:4px; background:var(--surface2); border-radius:2px; margin-bottom:8px;
+  overflow:hidden;
+}
+.progress-fill {
+  height:100%; background:var(--accent); border-radius:2px; transition: width 0.3s linear;
+}
+.transport-controls {
+  display:flex; align-items:center; justify-content:center; gap:8px;
+}
+.transport-controls button {
+  width:48px; height:48px; border-radius:50%; border:1px solid var(--border);
+  background:var(--surface2); color:var(--text); font-size:20px; cursor:pointer;
+  transition: all 0.1s;
+}
+.transport-controls button:active { transform:scale(0.9); }
+.transport-controls .play-btn {
+  width:64px; height:64px; font-size:28px;
+  background:var(--active); color:#000; border-color:var(--active);
+}
+.transport-controls .play-btn.playing {
+  background:var(--warn); border-color:var(--warn);
+}
+.transport-time {
+  font-size:13px; color:var(--text-dim); font-family:'SF Mono',monospace;
+  min-width:50px; text-align:center;
+}
+.transport-bpm {
+  font-size:12px; color:var(--accent); font-weight:600;
+  min-width:60px; text-align:center;
+}
+
+/* Scroll behavior */
+.chord-grid-container::-webkit-scrollbar { display:none; }
+</style>
+</head>
+<body>
+
+<!-- ===== SETLIST SCREEN ===== -->
+<div id="setlist-screen" class="active">
+  <div class="screen-header">
+    <h1>🎸 Bass Reader</h1>
+    <button class="btn btn-accent" onclick="addNewSong()">+ שיר חדש</button>
+  </div>
+  <div class="setlist-body" id="setlist-body"></div>
+</div>
+
+<!-- ===== EDITOR SCREEN ===== -->
+<div id="editor-screen">
+  <div class="screen-header">
+    <button class="btn" onclick="showScreen('setlist')">← חזרה</button>
+    <h1>עריכת שיר</h1>
+    <button class="btn btn-accent" onclick="saveSong()">שמור</button>
+  </div>
+  <div class="editor-body" id="editor-body"></div>
+</div>
+
+<!-- ===== PERFORM SCREEN ===== -->
+<div id="perform-screen">
+  <div class="perform-top">
+    <button onclick="showScreen('setlist')" title="Back">☰</button>
+    <span class="song-name" id="perform-song-name"></span>
+    <button onclick="prevSong()" title="Previous">⏮</button>
+    <button onclick="nextSong()" title="Next">⏭</button>
+  </div>
+
+  <div class="perform-main">
+    <div class="chord-display">
+      <div>
+        <div class="chord-now" id="chord-now">—</div>
+      </div>
+      <div class="chord-next-box">
+        <span class="chord-next-label">הבא</span>
+        <div class="chord-next" id="chord-next">—</div>
+      </div>
+    </div>
+
+    <div class="bar-info">
+      <span class="section-badge" id="section-badge">—</span>
+      <span class="bar-counter" id="bar-counter">Bar 0 / 0</span>
+    </div>
+
+    <div class="chord-grid-container" id="chord-grid"></div>
+  </div>
+
+  <div class="transport">
+    <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+    <div class="transport-controls">
+      <span class="transport-bpm" id="transport-bpm">120 BPM</span>
+      <button onclick="jumpBars(-4)" title="-4 bars">⏪</button>
+      <button onclick="togglePlay()" class="play-btn" id="play-btn">▶</button>
+      <button onclick="jumpBars(4)" title="+4 bars">⏩</button>
+      <span class="transport-time" id="transport-time">0:00</span>
+    </div>
+  </div>
+</div>
+
+<script>
+// ========== DATA ==========
+const SECTION_COLORS = ['--section-a','--section-b','--section-c','--section-d','--section-e'];
+
+const DEFAULT_SONGS = [
+  {
+    id: 1, title: "Come Together", artist: "Beatles", bpm: 82, beatsPerBar: 4,
+    sections: [
+      { name: "Intro", chords: "Dm Dm Dm Dm Dm Dm Dm Dm" },
+      { name: "Verse", chords: "Dm Dm Dm Dm Dm Dm Dm Dm A A Dm Dm Dm Dm Dm Dm" },
+      { name: "Chorus", chords: "Bm Bm G G A A Dm Dm" }
+    ],
+    structure: ["Intro","Verse","Chorus","Verse","Chorus","Verse","Chorus"]
+  },
+  {
+    id: 2, title: "Superstition", artist: "Stevie Wonder", bpm: 100, beatsPerBar: 4,
+    sections: [
+      { name: "Intro", chords: "Em Em Em Em" },
+      { name: "Verse", chords: "Em Em Em Em Em Em Em Em Em Em Em Em Em Em Em Em" },
+      { name: "Chorus", chords: "Am Am Am Am B7 B7 B7 B7 Em Em Em Em Em Em Em Em" }
+    ],
+    structure: ["Intro","Verse","Chorus","Verse","Chorus","Verse","Chorus"]
+  },
+  {
+    id: 3, title: "Another One Bites the Dust", artist: "Queen", bpm: 110, beatsPerBar: 4,
+    sections: [
+      { name: "Intro", chords: "Em Em Em Em" },
+      { name: "Verse", chords: "Em Em Em Em Em Em Em Em Am Am Am Am Em Em Em Em" },
+      { name: "Chorus", chords: "Am Am Am Am C C G G Am Am Am Am Em Em Em Em" },
+      { name: "Bridge", chords: "F#m F#m F#m F#m A A A A B B B B Em Em Em Em" }
+    ],
+    structure: ["Intro","Verse","Chorus","Verse","Chorus","Bridge","Chorus","Chorus"]
+  }
+];
+
+let songs = [];
+let currentSongIndex = 0;
+let editingSongId = null;
+
+// Performance state
+let isPlaying = false;
+let currentBarIndex = 0;
+let flatBars = []; // { chord, sectionName, sectionIndex, barInSection, barGlobal }
+let beatTimer = null;
+let currentBeat = 0;
+let startTime = 0;
+let elapsedBeforePlay = 0;
+
+// ========== INIT ==========
+function init() {
+  const stored = localStorage.getItem('bass-reader-songs');
+  if (stored) {
+    songs = JSON.parse(stored);
+  } else {
+    songs = JSON.parse(JSON.stringify(DEFAULT_SONGS));
+    saveSongs();
+  }
+  renderSetlist();
+  setupKeyboard();
+  setupTouch();
+}
+
+function saveSongs() {
+  localStorage.setItem('bass-reader-songs', JSON.stringify(songs));
+}
+
+// ========== SCREENS ==========
+function showScreen(name) {
+  document.querySelectorAll('#setlist-screen,#editor-screen,#perform-screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(name + '-screen').classList.add('active');
+  if (name === 'setlist') { stopPlay(); renderSetlist(); }
+}
+
+// ========== SETLIST ==========
+function renderSetlist() {
+  const body = document.getElementById('setlist-body');
+  body.innerHTML = songs.map((s, i) => `
+    <div class="song-card" onclick="startPerformance(${i})">
+      <div class="song-num">${i + 1}</div>
+      <div class="song-info">
+        <div class="song-title">${s.title}</div>
+        <div class="song-meta">${s.artist || ''} · ${s.bpm} BPM · ${s.sections.length} sections</div>
+      </div>
+      <div class="song-actions">
+        <button onclick="event.stopPropagation(); editSong(${s.id})" title="Edit">✏️</button>
+        <button onclick="event.stopPropagation(); deleteSong(${s.id})" title="Delete">🗑</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ========== EDITOR ==========
+function addNewSong() {
+  const id = Date.now();
+  const song = {
+    id, title: "שיר חדש", artist: "", bpm: 120, beatsPerBar: 4,
+    sections: [{ name: "Verse", chords: "Am Am Am Am" }],
+    structure: ["Verse"]
+  };
+  songs.push(song);
+  saveSongs();
+  editSong(id);
+}
+
+function editSong(id) {
+  editingSongId = id;
+  const song = songs.find(s => s.id === id);
+  if (!song) return;
+
+  const body = document.getElementById('editor-body');
+  body.innerHTML = `
+    <div class="form-group">
+      <label>שם השיר</label>
+      <input type="text" id="ed-title" value="${song.title}">
+    </div>
+    <div class="form-group">
+      <label>אמן</label>
+      <input type="text" id="ed-artist" value="${song.artist || ''}">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>BPM</label>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="tap-tempo-val" id="ed-bpm-val">${song.bpm}</span>
+          <input type="range" id="ed-bpm" min="40" max="220" value="${song.bpm}"
+            style="flex:1" oninput="document.getElementById('ed-bpm-val').textContent=this.value">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Tap Tempo</label>
+        <button class="tap-tempo-btn" onclick="tapTempo()">TAP</button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Beats per Bar</label>
+      <select id="ed-beats">
+        <option value="3" ${song.beatsPerBar===3?'selected':''}>3/4</option>
+        <option value="4" ${song.beatsPerBar===4?'selected':''}>4/4</option>
+        <option value="6" ${song.beatsPerBar===6?'selected':''}>6/8</option>
+      </select>
+    </div>
+
+    <h3 style="margin:20px 0 10px; font-size:16px;">סקשנים</h3>
+    <div id="sections-container"></div>
+    <button class="add-section-btn" onclick="addSection()">+ הוסף סקשן</button>
+
+    <h3 style="margin:20px 0 10px; font-size:16px;">מבנה השיר (Structure)</h3>
+    <div class="form-group">
+      <label>סדר סקשנים (מופרדים בפסיקים)</label>
+      <input type="text" id="ed-structure" value="${song.structure.join(', ')}"
+        placeholder="Verse, Chorus, Verse, Chorus">
+    </div>
+  `;
+
+  renderSectionsEditor(song.sections);
+  showScreen('editor');
+}
+
+function renderSectionsEditor(sections) {
+  const container = document.getElementById('sections-container');
+  container.innerHTML = sections.map((sec, i) => {
+    const colorVar = SECTION_COLORS[i % SECTION_COLORS.length];
+    return `
+    <div class="section-editor" data-index="${i}">
+      <div class="section-header">
+        <div class="section-color" style="background:var(${colorVar})"></div>
+        <input class="section-name-input" value="${sec.name}" data-field="name" data-idx="${i}">
+        <button class="remove-section" onclick="removeSection(${i})">×</button>
+      </div>
+      <div class="form-group" style="margin:0">
+        <label>אקורדים (רווח בין כל בר)</label>
+        <textarea data-field="chords" data-idx="${i}" rows="2">${sec.chords}</textarea>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function addSection() {
+  const song = songs.find(s => s.id === editingSongId);
+  song.sections.push({ name: "New Section", chords: "Am Am Am Am" });
+  renderSectionsEditor(song.sections);
+}
+
+function removeSection(idx) {
+  const song = songs.find(s => s.id === editingSongId);
+  song.sections.splice(idx, 1);
+  renderSectionsEditor(song.sections);
+}
+
+let tapTimes = [];
+function tapTempo() {
+  const now = performance.now();
+  tapTimes.push(now);
+  if (tapTimes.length > 8) tapTimes.shift();
+  if (tapTimes.length >= 2) {
+    let sum = 0;
+    for (let i = 1; i < tapTimes.length; i++) sum += tapTimes[i] - tapTimes[i-1];
+    const avg = sum / (tapTimes.length - 1);
+    const bpm = Math.round(60000 / avg);
+    document.getElementById('ed-bpm').value = bpm;
+    document.getElementById('ed-bpm-val').textContent = bpm;
+  }
+  // Reset after 2s pause
+  clearTimeout(tapTimes._timer);
+  tapTimes._timer = setTimeout(() => tapTimes = [], 2000);
+}
+
+function saveSong() {
+  const song = songs.find(s => s.id === editingSongId);
+  if (!song) return;
+  song.title = document.getElementById('ed-title').value;
+  song.artist = document.getElementById('ed-artist').value;
+  song.bpm = parseInt(document.getElementById('ed-bpm').value);
+  song.beatsPerBar = parseInt(document.getElementById('ed-beats').value);
+  song.structure = document.getElementById('ed-structure').value.split(',').map(s => s.trim()).filter(Boolean);
+
+  // Gather sections
+  document.querySelectorAll('.section-editor').forEach((el, i) => {
+    song.sections[i].name = el.querySelector('[data-field="name"]').value;
+    song.sections[i].chords = el.querySelector('[data-field="chords"]').value;
+  });
+
+  saveSongs();
+  showScreen('setlist');
+}
+
+function deleteSong(id) {
+  if (confirm('למחוק את השיר?')) {
+    songs = songs.filter(s => s.id !== id);
+    saveSongs();
+    renderSetlist();
+  }
+}
+
+// ========== PERFORMANCE ==========
+function startPerformance(index) {
+  currentSongIndex = index;
+  loadPerformance();
+  showScreen('perform');
+}
+
+function loadPerformance() {
+  const song = songs[currentSongIndex];
+  if (!song) return;
+
+  stopPlay();
+  document.getElementById('perform-song-name').textContent = `${song.title} — ${song.artist || ''}`;
+  document.getElementById('transport-bpm').textContent = song.bpm + ' BPM';
+
+  // Build flat bar list from structure
+  flatBars = [];
+  let globalBar = 0;
+  const structure = song.structure && song.structure.length > 0 ? song.structure : song.sections.map(s => s.name);
+
+  structure.forEach((sectionName, sIdx) => {
+    const section = song.sections.find(s => s.name === sectionName);
+    if (!section) return;
+    const chords = section.chords.trim().split(/\s+/);
+    chords.forEach((chord, bIdx) => {
+      flatBars.push({
+        chord,
+        sectionName,
+        sectionIndex: sIdx,
+        sectionColorIdx: song.sections.indexOf(section),
+        barInSection: bIdx,
+        totalInSection: chords.length,
+        barGlobal: globalBar++
+      });
+    });
+  });
+
+  currentBarIndex = 0;
+  elapsedBeforePlay = 0;
+  renderChordGrid(song);
+  updateDisplay();
+}
+
+function renderChordGrid(song) {
+  const grid = document.getElementById('chord-grid');
+  let html = '';
+  let barOffset = 0;
+  const structure = song.structure && song.structure.length > 0 ? song.structure : song.sections.map(s => s.name);
+
+  structure.forEach((sectionName, sIdx) => {
+    const section = song.sections.find(s => s.name === sectionName);
+    if (!section) return;
+    const chords = section.chords.trim().split(/\s+/);
+    const colorIdx = song.sections.indexOf(section);
+    const colorVar = SECTION_COLORS[colorIdx % SECTION_COLORS.length];
+
+    html += `<div class="grid-section" data-section-idx="${sIdx}">`;
+    html += `<div class="grid-section-label" style="background:var(${colorVar}); color:#000;">
+      ${sectionName}</div>`;
+    html += `<div class="grid-bars">`;
+    chords.forEach((chord, bIdx) => {
+      const globalIdx = barOffset + bIdx;
+      html += `<div class="grid-bar" data-bar="${globalIdx}" onclick="jumpToBar(${globalIdx})">
+        <span class="bar-num">${globalIdx + 1}</span>${chord}</div>`;
+    });
+    html += `</div></div>`;
+    barOffset += chords.length;
+  });
+
+  grid.innerHTML = html;
+}
+
+function updateDisplay() {
+  if (!flatBars.length) return;
+  const bar = flatBars[currentBarIndex];
+  if (!bar) return;
+  const nextBar = flatBars[currentBarIndex + 1];
+
+  // Current chord
+  document.getElementById('chord-now').textContent = bar.chord;
+  document.getElementById('chord-next').textContent = nextBar ? nextBar.chord : '—';
+
+  // Section badge
+  const badge = document.getElementById('section-badge');
+  const colorVar = SECTION_COLORS[bar.sectionColorIdx % SECTION_COLORS.length];
+  badge.textContent = bar.sectionName;
+  badge.style.background = `var(${colorVar})`;
+  badge.style.color = '#000';
+
+  // Bar counter
+  document.getElementById('bar-counter').textContent =
+    `Bar ${bar.barInSection + 1}/${bar.totalInSection} · Total ${bar.barGlobal + 1}/${flatBars.length}`;
+
+  // Progress
+  const pct = ((currentBarIndex + 1) / flatBars.length) * 100;
+  document.getElementById('progress-fill').style.width = pct + '%';
+
+  // Grid highlight
+  document.querySelectorAll('.grid-bar').forEach(el => el.classList.remove('active'));
+  const activeEl = document.querySelector(`.grid-bar[data-bar="${currentBarIndex}"]`);
+  if (activeEl) {
+    activeEl.classList.add('active');
+    activeEl.scrollIntoView({ behavior:'smooth', block:'center' });
+  }
+
+  // Past sections
+  document.querySelectorAll('.grid-section').forEach(el => {
+    const sIdx = parseInt(el.dataset.sectionIdx);
+    el.classList.toggle('past', sIdx < bar.sectionIndex);
+  });
+}
+
+// ========== TRANSPORT ==========
+function togglePlay() {
+  if (isPlaying) { stopPlay(); } else { startPlay(); }
+}
+
+function startPlay() {
+  if (!flatBars.length) return;
+  isPlaying = true;
+  const btn = document.getElementById('play-btn');
+  btn.textContent = '⏸';
+  btn.classList.add('playing');
+  startTime = performance.now();
+  currentBeat = 0;
+  tick();
+}
+
+function stopPlay() {
+  isPlaying = false;
+  const btn = document.getElementById('play-btn');
+  btn.textContent = '▶';
+  btn.classList.remove('playing');
+  if (beatTimer) { clearTimeout(beatTimer); beatTimer = null; }
+  if (isPlaying === false) {
+    elapsedBeforePlay += (performance.now() - startTime) || 0;
+  }
+}
+
+function tick() {
+  if (!isPlaying) return;
+  const song = songs[currentSongIndex];
+  const msPerBeat = 60000 / song.bpm;
+  const msPerBar = msPerBeat * song.beatsPerBar;
+
+  updateTime();
+
+  // Schedule next bar
+  beatTimer = setTimeout(() => {
+    if (currentBarIndex < flatBars.length - 1) {
+      currentBarIndex++;
+      updateDisplay();
+      tick();
+    } else {
+      stopPlay();
+    }
+  }, msPerBar);
+}
+
+function updateTime() {
+  if (!isPlaying) return;
+  const song = songs[currentSongIndex];
+  const msPerBar = (60000 / song.bpm) * song.beatsPerBar;
+  const elapsed = currentBarIndex * msPerBar;
+  const sec = Math.floor(elapsed / 1000);
+  const min = Math.floor(sec / 60);
+  const s = sec % 60;
+  document.getElementById('transport-time').textContent = `${min}:${String(s).padStart(2,'0')}`;
+}
+
+function jumpToBar(idx) {
+  if (idx < 0) idx = 0;
+  if (idx >= flatBars.length) idx = flatBars.length - 1;
+  currentBarIndex = idx;
+  updateDisplay();
+  updateTime();
+  // If playing, restart timer from new position
+  if (isPlaying) {
+    clearTimeout(beatTimer);
+    tick();
+  }
+}
+
+function jumpBars(n) {
+  jumpToBar(currentBarIndex + n);
+}
+
+function nextSong() {
+  if (currentSongIndex < songs.length - 1) {
+    currentSongIndex++;
+    loadPerformance();
+  }
+}
+
+function prevSong() {
+  if (currentSongIndex > 0) {
+    currentSongIndex--;
+    loadPerformance();
+  }
+}
+
+// ========== KEYBOARD ==========
+function setupKeyboard() {
+  document.addEventListener('keydown', (e) => {
+    if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
+
+    switch(e.code) {
+      case 'Space':
+        e.preventDefault();
+        if (document.getElementById('perform-screen').classList.contains('active')) togglePlay();
+        break;
+      case 'ArrowRight':
+      case 'PageDown':
+        e.preventDefault();
+        jumpBars(1);
+        break;
+      case 'ArrowLeft':
+      case 'PageUp':
+        e.preventDefault();
+        jumpBars(-1);
+        break;
+      case 'ArrowDown':
+        e.preventDefault();
+        jumpBars(4);
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        jumpBars(-4);
+        break;
+    }
+  });
+}
+
+// ========== TOUCH / SWIPE ==========
+function setupTouch() {
+  let startX = 0, startY = 0;
+  const screen = document.getElementById('perform-screen');
+
+  screen.addEventListener('touchstart', (e) => {
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+  }, { passive: true });
+
+  screen.addEventListener('touchend', (e) => {
+    const dx = e.changedTouches[0].clientX - startX;
+    const dy = e.changedTouches[0].clientY - startY;
+    if (Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      if (dx < 0) nextSong(); // swipe left = next
+      else prevSong(); // swipe right = prev
+    }
+  }, { passive: true });
+}
+
+// ========== START ==========
+init();
+</script>
+</body>
+</html>
