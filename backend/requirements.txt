@@ -9,6 +9,7 @@ edge-tts
 phonikud
 phonikud-onnx
 huggingface-hub
+transformers>=4.29.0
 numpy
 static-ffmpeg
 youtube-transcript-api

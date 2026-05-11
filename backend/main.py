@@ -16,6 +16,7 @@ from youtube_transcript_api import YouTubeTranscriptApi
 from config import GOOGLE_API_KEY, GEMINI_MODEL, AUDIO_OUTPUT_DIR
 from prompt_template import build_meditation_prompt
 from tts_service import generate_audio
+from hf_agent_service import run_agent, chat_agent
 
 app = FastAPI(title="Guided Imagery")
 
@@ -336,6 +337,30 @@ RULES:
 @app.get("/api/health")
 async def health():
     return {"status": "ok"}
+
+
+# ── HfAgent ─────────────────────────────────────────────────────────
+
+class HfAgentRequest(BaseModel):
+    task: str = Field(..., min_length=1, max_length=2000)
+    mode: str = Field(default="run", pattern="^(run|chat)$")
+
+
+@app.post("/api/hf-agent")
+async def hf_agent(req: HfAgentRequest):
+    """Run a task through the Hugging Face Transformers agent (HfAgent).
+
+    mode='run'  — stateless single invocation (agent.run)
+    mode='chat' — stateful single turn    (agent.chat)
+    """
+    try:
+        if req.mode == "chat":
+            result = await chat_agent(req.task)
+        else:
+            result = await run_agent(req.task)
+        return {"result": result}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 # Serve frontend static files (must be after API routes)

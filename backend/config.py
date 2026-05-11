@@ -15,6 +15,13 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 ELEVEN_API_KEY = os.getenv("ELEVEN_API_KEY")
 ELEVEN_VOICE_ID = os.getenv("ELEVEN_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
 
+# Hugging Face
+HF_TOKEN = os.getenv("HF_TOKEN")
+HF_AGENT_MODEL_URL = os.getenv(
+    "HF_AGENT_MODEL_URL",
+    "https://api-inference.huggingface.co/models/bigcode/starcoder",
+)
+
 # Gemini
 GEMINI_MODEL = "gemini-2.5-flash"
 
