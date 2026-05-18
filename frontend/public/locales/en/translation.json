@@ -52,5 +52,16 @@
   "errors": {
     "generation_failed": "Error creating meditation. Please try again.",
     "connection_lost": "Connection lost. Please try again."
+  },
+  "monitor": {
+    "start": "Measure HR",
+    "calibrating": "Calibrating...",
+    "heart_rate": "Heart Rate",
+    "signal": "Signal",
+    "baseline": "Baseline",
+    "vs_baseline": "vs. Baseline",
+    "privacy": "Local processing only — video never leaves your device",
+    "collapse": "Collapse",
+    "expand": "Expand"
   }
 }

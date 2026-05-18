@@ -52,5 +52,16 @@
   "errors": {
     "generation_failed": "שגיאה ביצירת המדיטציה. נסה שוב.",
     "connection_lost": "החיבור נותק. נסה שוב."
+  },
+  "monitor": {
+    "start": "מדוד דופק",
+    "calibrating": "מתכייל...",
+    "heart_rate": "דופק",
+    "signal": "איכות",
+    "baseline": "בייסליין",
+    "vs_baseline": "מול בייסליין",
+    "privacy": "עיבוד מקומי בלבד — הווידאו אינו נשלח לשרת",
+    "collapse": "כווץ",
+    "expand": "הרחב"
   }
 }

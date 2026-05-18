@@ -8,6 +8,7 @@ import ScriptDisplay from './components/ScriptDisplay'
 import LanguageToggle from './components/LanguageToggle'
 import YouTubeTranslator from './components/YouTubeTranslator'
 import MathCanvas from './components/MathCanvas/MathCanvas'
+import PassiveCameraMonitor from './components/PassiveCameraMonitor/PassiveCameraMonitor'
 
 function App() {
   const { t, i18n } = useTranslation()
@@ -31,9 +32,17 @@ function App() {
     })
   }
 
+  // Map app state to monitor phase
+  const monitorPhase =
+    state === 'complete' ? 'complete' :
+    state === 'loading'  ? 'session'  :
+    'idle'
+
   return (
     <div className="app">
       <div className="app-bg" />
+
+      <PassiveCameraMonitor phase={monitorPhase} />
 
       <header className={`app-header ${page === 'math' ? 'app-main-hidden' : ''}`}>
         <LanguageToggle />

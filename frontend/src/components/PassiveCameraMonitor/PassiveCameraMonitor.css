@@ -1,0 +1,285 @@
+/* ============================================================
+   PassiveCameraMonitor — floating rPPG heart rate widget
+   Fixed: bottom-left (flips to bottom-right in RTL layouts)
+   ============================================================ */
+
+.pcm-wrapper {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  z-index: 1000;
+  font-family: inherit;
+  font-size: 13px;
+}
+
+/* RTL: flip to right side */
+[dir='rtl'] .pcm-wrapper {
+  left: auto;
+  right: 20px;
+}
+
+/* ---- Base card ---- */
+.pcm-card {
+  background: rgba(20, 20, 30, 0.78);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 10px 12px;
+  color: #f0f0f0;
+  max-width: 180px;
+  min-width: 120px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  animation: pcm-fade-in 0.25s ease;
+}
+
+@keyframes pcm-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ---- Idle: start button / privacy prompt ---- */
+.pcm-idle-area {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.pcm-privacy-prompt {
+  background: rgba(20, 20, 30, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 8px 10px;
+  max-width: 220px;
+  color: #ccc;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pcm-privacy-text {
+  font-size: 11px;
+  line-height: 1.4;
+  margin: 0;
+  opacity: 0.8;
+}
+
+.pcm-start-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 20px;
+  color: #f0f0f0;
+  font-size: 12px;
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: background 0.2s;
+  white-space: nowrap;
+}
+
+.pcm-start-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.pcm-heart-icon {
+  font-size: 13px;
+}
+
+/* ---- Calibrating ---- */
+.pcm-calibrating {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+}
+
+.pcm-pulse-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ff6b6b;
+  flex-shrink: 0;
+  animation: pcm-pulse-dot 1.2s ease-in-out infinite;
+}
+
+@keyframes pcm-pulse-dot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%       { transform: scale(1.6); opacity: 0.5; }
+}
+
+.pcm-calibrating-text {
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+/* ---- Expanded card ---- */
+.pcm-expanded {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.pcm-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+
+.pcm-hr-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.6;
+}
+
+.pcm-header-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.pcm-icon-btn {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.15s, background 0.15s;
+}
+
+.pcm-icon-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.pcm-close-btn {
+  font-size: 16px;
+}
+
+/* ---- BPM display ---- */
+.pcm-bpm-display {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.pcm-bpm-number {
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1;
+  color: #ff6b6b;
+}
+
+.pcm-bpm-unit {
+  font-size: 12px;
+  opacity: 0.55;
+}
+
+/* Subtle heartbeat pulse on the BPM number */
+@keyframes pcm-heartbeat {
+  0%   { transform: scale(1); }
+  14%  { transform: scale(1.05); }
+  28%  { transform: scale(1); }
+  42%  { transform: scale(1.03); }
+  70%  { transform: scale(1); }
+  100% { transform: scale(1); }
+}
+
+.pcm-pulse-anim {
+  display: inline-block;
+  animation: pcm-heartbeat 1.2s ease-in-out infinite;
+}
+
+/* ---- Confidence bar ---- */
+.pcm-signal-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pcm-signal-label {
+  font-size: 10px;
+  opacity: 0.5;
+  flex-shrink: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pcm-confidence-track {
+  flex: 1;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.pcm-confidence-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.5s ease, background-color 0.5s ease;
+  min-width: 2px;
+}
+
+/* ---- Delta vs baseline ---- */
+.pcm-delta {
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  padding: 3px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.pcm-delta-down {
+  color: #4caf50;
+}
+
+.pcm-delta-up {
+  color: #ff7043;
+}
+
+.pcm-delta-label {
+  font-size: 10px;
+  font-weight: 400;
+  opacity: 0.6;
+}
+
+/* ---- Collapsed chip ---- */
+.pcm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(20, 20, 30, 0.78);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 20px;
+  color: #f0f0f0;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 5px 10px;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+  transition: background 0.2s;
+  animation: pcm-fade-in 0.2s ease;
+}
+
+.pcm-chip:hover {
+  background: rgba(40, 40, 55, 0.9);
+}
+
+/* ---- Error state ---- */
+.pcm-error {
+  padding: 8px 10px;
+}
+
+/* ---- Collapsed wrapper (chip mode) ---- */
+.pcm-collapsed .pcm-card {
+  max-width: 80px;
+}
