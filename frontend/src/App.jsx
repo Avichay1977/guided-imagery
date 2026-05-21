@@ -8,11 +8,12 @@ import ScriptDisplay from './components/ScriptDisplay'
 import LanguageToggle from './components/LanguageToggle'
 import YouTubeTranslator from './components/YouTubeTranslator'
 import MathCanvas from './components/MathCanvas/MathCanvas'
+import DisabilityTracker from './components/DisabilityTracker/DisabilityTracker'
 
 function App() {
   const { t, i18n } = useTranslation()
   const { state, progress, result, error, generate, reset } = useSession()
-  const [page, setPage] = useState('home') // home | youtube | math
+  const [page, setPage] = useState('home') // home | youtube | math | disability
 
   useEffect(() => {
     document.documentElement.dir = i18n.dir()
@@ -35,7 +36,7 @@ function App() {
     <div className="app">
       <div className="app-bg" />
 
-      <header className={`app-header ${page === 'math' ? 'app-main-hidden' : ''}`}>
+      <header className={`app-header ${page === 'math' || page === 'disability' ? 'app-main-hidden' : ''}`}>
         <LanguageToggle />
         <h1 className="app-title">
           {page === 'youtube' ? t('youtube.title') : t('app_title')}
@@ -49,7 +50,13 @@ function App() {
         <MathCanvas onBack={() => setPage('home')} />
       )}
 
-      <main className={`app-main ${page === 'youtube' ? 'app-main-wide' : ''} ${page === 'math' ? 'app-main-hidden' : ''}`}>
+      {page === 'disability' && (
+        <main className="app-main app-main-wide" style={{ position: 'relative', zIndex: 1, animation: 'fadeIn 0.4s ease' }}>
+          <DisabilityTracker onBack={() => setPage('home')} />
+        </main>
+      )}
+
+      <main className={`app-main ${page === 'youtube' ? 'app-main-wide' : ''} ${page === 'math' || page === 'disability' ? 'app-main-hidden' : ''}`}>
         {page === 'youtube' ? (
           <YouTubeTranslator onBack={() => setPage('home')} />
         ) : page !== 'math' ? (
@@ -69,6 +76,13 @@ function App() {
                   style={{ marginTop: '8px' }}
                 >
                   Visual Math Canvas
+                </button>
+                <button
+                  className="btn btn-secondary yt-nav-btn"
+                  onClick={() => setPage('disability')}
+                  style={{ marginTop: '8px' }}
+                >
+                  ♿ מעקב זכויות נכות
                 </button>
               </>
             )}
