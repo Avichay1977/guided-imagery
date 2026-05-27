@@ -4,6 +4,33 @@ import os
 from pathlib import Path
 
 
+def assess_user_baseline(topic):
+    print(f"\n[*] Calibrating complexity for: {topic}")
+    print("[?] In one sentence, how would you approach the core architecture of this topic?")
+    user_response = input("[>] Enter your approach (or type 'skip' if complete beginner): ")
+    return user_response
+
+
+def build_calibrated_prompt(topic, user_response, learning_data):
+    if user_response.lower().strip() == 'skip':
+        level_context = "The user is learning this from scratch. Start with core principles."
+    else:
+        level_context = (
+            f"The user possesses this system-level understanding: '{user_response}'. "
+            f"Bypass introductory concepts entirely. Align the generated project with this "
+            f"structural logic and push their limits."
+        )
+
+    return (
+        f"You are the Project Generator. Build a concrete, functional implementation based on "
+        f"the calibration and synthesized data below. Save all relevant files directly in the "
+        f"current directory.\n\n"
+        f"Topic: {topic}\n"
+        f"Calibration: {level_context}\n\n"
+        f"Synthesized Data:\n{learning_data}"
+    )
+
+
 def run_claude_bridge(md_file_path, target_dir):
     if not os.path.exists(md_file_path):
         print(f"[-] Error: Source file {md_file_path} is missing.")
@@ -14,15 +41,13 @@ def run_claude_bridge(md_file_path, target_dir):
     with open(md_file_path, 'r', encoding='utf-8') as file:
         learning_data = file.read()
 
-    instruction = (
-        f"You are the Project Generator. Read the following synthesized data and build a concrete, "
-        f"functional implementation. Save all relevant files directly in the current directory.\n\n"
-        f"Data:\n{learning_data}"
-    )
+    topic = Path(md_file_path).stem
 
-    print(f"[*] Bridging data to Claude Code. Target directory: {target_dir}")
+    user_response = assess_user_baseline(topic)
+    instruction = build_calibrated_prompt(topic, user_response, learning_data)
 
-    # Fetch API key via api-pilot if available
+    print(f"\n[*] Bridging data to Claude Code. Target directory: {target_dir}")
+
     try:
         api_key_process = subprocess.run(
             ['api-pilot', 'get', 'anthropic'],
