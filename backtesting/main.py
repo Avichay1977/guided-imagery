@@ -1,3 +1,6 @@
+import argparse
+import sys
+
 from data_loader import DataLoader
 from backtester import Backtester, BacktestConfig
 from portfolio import PortfolioTracker
@@ -5,17 +8,53 @@ from execution import ExecutionSimulator
 from metrics import MetricsEngine, MetricsConfig
 
 
-def main():
-    loader = DataLoader(
-        use_adjusted_close=False,
+def _print_section(title: str, data: dict) -> None:
+    print(f"\n=== {title} ===")
+    for key, value in data.items():
+        print(f"  {key}: {value}")
+
+
+def _build_benchmark_equity(df, initial_cash: float) -> list:
+    """Buy at first close, hold to last close. Normalized to initial_cash."""
+    closes = df["close"].values
+    if len(closes) == 0:
+        return [initial_cash]
+    return (initial_cash * closes / closes[0]).tolist()
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Run backtest on OHLCV CSV")
+    parser.add_argument("--input", required=True, help="Path to OHLCV CSV")
+    parser.add_argument(
+        "--adjust",
+        action="store_true",
+        help="Apply adjusted_close scaling via DataLoader (requires adjusted_close column)",
     )
+    args = parser.parse_args()
 
-    df = loader.load_from_csv("data.csv")
+    # --------------------------------------------------
+    # Load & clean data
+    # --------------------------------------------------
+    loader = DataLoader(use_adjusted_close=args.adjust)
 
-    print("=== DATA QUALITY REPORT ===")
-    for key, value in loader.get_last_report().items():
-        print(f"{key}: {value}")
+    try:
+        df = loader.load_from_csv(args.input)
+    except Exception as exc:
+        print(f"ERROR loading data: {exc}", file=sys.stderr)
+        sys.exit(1)
 
+    _print_section("DATA QUALITY REPORT", loader.get_last_report())
+
+    report = loader.get_last_report()
+    if report.get("invalid_geometry_rows_corrected", 0) > len(df) * 0.01:
+        print(
+            "\nWARNING: >1% of rows had geometry corrections — inspect data source.",
+            file=sys.stderr,
+        )
+
+    # --------------------------------------------------
+    # Backtest
+    # --------------------------------------------------
     config = BacktestConfig(
         initial_cash=100_000,
         max_risk_pct=0.01,
@@ -28,41 +67,89 @@ def main():
     )
 
     portfolio = PortfolioTracker(initial_cash=config.initial_cash)
-
-    execution = ExecutionSimulator(
-        slippage_pct=0.0005,
-        fixed_fee=2.0,
-    )
-
-    backtester = Backtester(
-        config=config,
-        portfolio=portfolio,
-        execution=execution,
-    )
+    execution = ExecutionSimulator(slippage_pct=0.0005, fixed_fee=2.0)
+    backtester = Backtester(config=config, portfolio=portfolio, execution=execution)
 
     results = backtester.run(df)
 
-    metrics_engine = MetricsEngine(
-        MetricsConfig(
-            periods_per_year=252,
-            risk_free_rate_annual=0.0,
-        )
+    ambiguous_pct = (
+        results["ambiguous_exits"] / len(results["trades"]) * 100
+        if results["trades"]
+        else 0.0
     )
 
-    metrics = metrics_engine.calculate_all(
+    _print_section(
+        "BACKTEST",
+        {
+            "final_equity": round(results["final_equity"], 2),
+            "trades": len(results["trades"]),
+            "kill_switch_triggered": results["kill_switch_triggered"],
+            "ambiguous_exits": results["ambiguous_exits"],
+            "ambiguous_exits_pct": f"{ambiguous_pct:.1f}%",
+        },
+    )
+
+    # --------------------------------------------------
+    # Metrics
+    # --------------------------------------------------
+    engine = MetricsEngine(MetricsConfig(periods_per_year=252, risk_free_rate_annual=0.0))
+
+    strategy_metrics = engine.calculate_all(
         equity_curve=results["equity_curve"],
         trades=results["trades"],
     )
+    _print_section("METRICS", strategy_metrics)
 
-    print("\n=== BACKTEST ===")
-    print("Final Equity:", results["final_equity"])
-    print("Trades:", len(results["trades"]))
-    print("Kill Switch:", results["kill_switch_triggered"])
-    print("Ambiguous Exits:", results["ambiguous_exits"])
+    # --------------------------------------------------
+    # Benchmark (buy & hold)
+    # --------------------------------------------------
+    benchmark_equity = _build_benchmark_equity(df, config.initial_cash)
+    benchmark_metrics = engine.calculate_benchmark(benchmark_equity)
+    _print_section("BENCHMARK (buy & hold)", benchmark_metrics)
 
-    print("\n=== METRICS ===")
-    for key, value in metrics.items():
-        print(f"{key}: {value}")
+    # --------------------------------------------------
+    # Strategy vs Benchmark
+    # --------------------------------------------------
+    def _delta(key: str, higher_is_better: bool = True) -> str:
+        s = strategy_metrics.get(key)
+        b = benchmark_metrics.get(key)
+        if s is None or b is None:
+            return "n/a"
+        diff = s - b
+        sign = "+" if diff >= 0 else ""
+        better = (diff > 0) == higher_is_better
+        tag = "✓" if better else "✗"
+        return f"{sign}{diff:.2f}  {tag}"
+
+    comparison = {
+        "cagr_pct      [strategy vs benchmark]": _delta("cagr_pct"),
+        "sharpe_ratio  [strategy vs benchmark]": _delta("sharpe_ratio"),
+        "max_drawdown  [strategy vs benchmark]": _delta("max_drawdown_pct", higher_is_better=False),
+        "calmar_ratio  [strategy vs benchmark]": _delta("calmar_ratio"),
+    }
+    _print_section("STRATEGY VS BENCHMARK", comparison)
+
+    # Summary verdict
+    s_calmar = strategy_metrics.get("calmar_ratio", 0)
+    b_calmar = benchmark_metrics.get("calmar_ratio", 0)
+    exp_r = strategy_metrics.get("expectancy_per_trade_r", 0)
+
+    print("\n--- VERDICT ---")
+    if exp_r is not None and exp_r <= 0:
+        print("  ✗ expectancy_per_trade_R ≤ 0 → edge not confirmed")
+    else:
+        print(f"  ✓ expectancy_per_trade_R = {exp_r}")
+
+    if s_calmar >= b_calmar:
+        print(f"  ✓ Calmar {s_calmar:.3f} ≥ benchmark {b_calmar:.3f}")
+    else:
+        print(f"  ✗ Calmar {s_calmar:.3f} < benchmark {b_calmar:.3f}")
+
+    pf = strategy_metrics.get("profit_factor", 0) or 0
+    if pf >= 1.2:
+        print(f"  ✓ profit_factor = {pf}")
+    else:
+        print(f"  ✗ profit_factor = {pf}  (target ≥ 1.2)")
 
 
 if __name__ == "__main__":
