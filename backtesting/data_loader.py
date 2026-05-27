@@ -14,6 +14,7 @@ class DataQualityReport:
     negative_or_zero_price_rows_removed: int = 0
     invalid_geometry_rows_corrected: int = 0
     missing_volume_filled: int = 0
+    invalid_adjusted_close_rows_removed: int = 0
     adjusted_ohlc_applied: bool = False
 
 
@@ -44,6 +45,7 @@ class DataLoader:
         self.correct_invalid_geometry = correct_invalid_geometry
         self.drop_zero_volume = drop_zero_volume
         self.last_report: DataQualityReport | None = None
+        self._last_invalid_geometry_rows: pd.DataFrame | None = None
 
     def load_from_csv(self, file_path: str | Path) -> pd.DataFrame:
         path = Path(file_path)
@@ -57,6 +59,7 @@ class DataLoader:
             source_path=str(path.resolve()),
             rows_loaded=len(df),
         )
+        self._last_invalid_geometry_rows = None
 
         if self.column_mapping:
             df = df.rename(columns=self.column_mapping)
@@ -184,6 +187,7 @@ class DataLoader:
         report.invalid_geometry_rows_corrected = int(invalid_geometry.sum())
 
         if invalid_geometry.any():
+            self._last_invalid_geometry_rows = df.loc[invalid_geometry].copy()
             if not self.correct_invalid_geometry:
                 df = df.loc[~invalid_geometry].copy()
             else:
@@ -231,9 +235,8 @@ class DataLoader:
 
         if not valid_adjusted.all():
             bad_count = int((~valid_adjusted).sum())
-            raise ValueError(
-                f"Invalid adjusted_close values found in {bad_count} rows."
-            )
+            report.invalid_adjusted_close_rows_removed = bad_count
+            df = df.loc[valid_adjusted].copy()
 
         adjustment_ratio = df["adjusted_close"] / df["close"]
 
@@ -262,3 +265,7 @@ class DataLoader:
             return {}
 
         return asdict(self.last_report)
+
+    def get_last_invalid_geometry_rows(self) -> pd.DataFrame | None:
+        """Returns the pre-correction rows that had invalid geometry, or None."""
+        return self._last_invalid_geometry_rows

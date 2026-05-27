@@ -200,3 +200,84 @@ def test_adjusted_ohlc_applied_only_when_adjust_flag_true(tmp_path):
     df_on = loader_on.load_from_csv(p)
     assert df_on.iloc[0]["close"] == pytest.approx(90.0)
     assert loader_on.get_last_report()["adjusted_ohlc_applied"] is True
+
+
+def test_loader_drops_invalid_numeric_ohlc(tmp_path):
+    """
+    A non-numeric string in an OHLC column becomes NaN via
+    pd.to_numeric(errors="coerce"), then the row is dropped as missing OHLC.
+    """
+    p = _csv(tmp_path, (
+        "timestamp,open,high,low,close,volume\n"
+        "2020-01-02,100,101,99,100,1000\n"
+        "2020-01-03,100,101,abc,100,1000\n"   # "abc" in low → NaN → dropped
+        "2020-01-06,100,101,99,100,1000\n"
+    ))
+    loader = DataLoader()
+    df = loader.load_from_csv(p)
+    report = loader.get_last_report()
+
+    assert report["missing_ohlc_rows_removed"] == 1
+    assert len(df) == 2
+
+
+def test_loader_no_ffill_bfill_on_ohlc(tmp_path):
+    """
+    Row 2 has a missing close (NaN). Row 1 close=100, row 3 close=200.
+    If ffill were applied: row 2 close would become 100 and all 3 rows survive.
+    If bfill were applied: row 2 close would become 200 and all 3 rows survive.
+    Correct: row 2 is dropped; remaining closes are exactly {100, 200}.
+    """
+    p = _csv(tmp_path, (
+        "timestamp,open,high,low,close,volume\n"
+        "2020-01-02,100,101,99,100,1000\n"
+        "2020-01-03,100,101,99,,1000\n"      # missing close
+        "2020-01-06,200,201,199,200,1000\n"
+    ))
+    loader = DataLoader()
+    df = loader.load_from_csv(p)
+
+    assert len(df) == 2
+    closes = sorted(df["close"].tolist())
+    assert closes == [100.0, 200.0]
+
+
+def test_loader_get_last_invalid_geometry_rows(tmp_path):
+    """
+    get_last_invalid_geometry_rows() returns the original (pre-correction)
+    bad rows so the caller can inspect what was fixed.
+    """
+    p = _csv(tmp_path, (
+        "timestamp,open,high,low,close,volume\n"
+        "2020-01-02,100,95,99,100,1000\n"    # high(95) < open(100) — invalid
+        "2020-01-03,100,101,99,100,1000\n"
+    ))
+    loader = DataLoader()
+    loader.load_from_csv(p)
+
+    bad = loader.get_last_invalid_geometry_rows()
+    assert bad is not None
+    assert len(bad) == 1
+    # Original values before correction
+    assert bad.iloc[0]["high"] == 95.0
+    assert bad.iloc[0]["open"] == 100.0
+
+
+def test_loader_invalid_adjusted_close_dropped(tmp_path):
+    """
+    Rows with invalid adjusted_close (zero or NaN) are removed and counted.
+    The pipeline does not raise; it continues with the valid rows.
+    """
+    p = _csv(tmp_path, (
+        "timestamp,open,high,low,close,adjusted_close,volume\n"
+        "2020-01-02,100,101,99,100,90,1000\n"    # valid
+        "2020-01-03,100,101,99,100,0,1000\n"     # adjusted_close=0 → invalid
+        "2020-01-06,100,101,99,100,95,1000\n"    # valid
+    ))
+    loader = DataLoader(use_adjusted_close=True)
+    df = loader.load_from_csv(p)
+    report = loader.get_last_report()
+
+    assert report["invalid_adjusted_close_rows_removed"] == 1
+    assert len(df) == 2
+    assert report["adjusted_ohlc_applied"] is True
