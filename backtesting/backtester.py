@@ -46,16 +46,18 @@ class Backtester:
             if open_position is not None:
                 exit_price, exit_reason = self._check_exit(row, open_position)
                 if exit_price is not None:
+                    is_ambiguous = exit_reason == "ambiguous"
+                    trade_reason = "stop_loss" if is_ambiguous else exit_reason
                     trade = self.execution.close_position(
                         portfolio=self.portfolio,
                         position=open_position,
                         exit_price=exit_price,
                         exit_time=row.Index,
-                        exit_reason=exit_reason,
+                        exit_reason=trade_reason,
                     )
                     trades.append(trade)
                     open_position = None
-                    if exit_reason == "ambiguous":
+                    if is_ambiguous:
                         ambiguous_exits += 1
                 continue
 
@@ -113,21 +115,54 @@ class Backtester:
         }
 
     def _check_exit(self, row, position) -> tuple:
-        hit_stop = row.low <= position["stop_price"]
-        hit_tp = row.high >= position["take_profit_price"]
+        stop = position["stop_price"]
+        tp = position["take_profit_price"]
+
+        # Gap scenarios: bar opened through a level — fill at actual open
+        if row.open <= stop:
+            return row.open, "stop_loss"
+        if row.open >= tp:
+            return row.open, "take_profit"
+
+        # Intrabar scenarios
+        hit_stop = row.low <= stop
+        hit_tp = row.high >= tp
 
         if hit_stop and hit_tp:
-            return position["stop_price"], "ambiguous"
+            return stop, "ambiguous"  # conservative price; caller records as stop_loss
         if hit_stop:
-            return position["stop_price"], "stop_loss"
+            return stop, "stop_loss"
         if hit_tp:
-            return position["take_profit_price"], "take_profit"
+            return tp, "take_profit"
 
         return None, None
 
     def calculate_confluence_score(self, row) -> int:
         score = 0
 
+        # Technical structure (max 3 points)
+        if (
+            self._has_valid_value(row, "close")
+            and self._has_valid_value(row, "ema_200")
+            and row.close > row.ema_200
+        ):
+            score += 1
+
+        if (
+            self._has_valid_value(row, "close")
+            and self._has_valid_value(row, "local_high_20")
+            and row.close > row.local_high_20
+        ):
+            score += 1
+
+        if (
+            self._has_valid_value(row, "volume")
+            and self._has_valid_value(row, "volume_avg_20")
+            and row.volume > row.volume_avg_20 * 1.5
+        ):
+            score += 1
+
+        # Market context (max 3 points, NaN-safe)
         if self._has_valid_value(row, "relative_strength") and row.relative_strength > 1.05:
             score += 1
 
