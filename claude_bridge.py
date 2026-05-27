@@ -1,7 +1,10 @@
 import subprocess
 import sys
 import os
+import re
 from pathlib import Path
+
+import anthropic
 
 
 def assess_user_baseline(topic):
@@ -23,12 +26,29 @@ def build_calibrated_prompt(topic, user_response, learning_data):
 
     return (
         f"You are the Project Generator. Build a concrete, functional implementation based on "
-        f"the calibration and synthesized data below. Save all relevant files directly in the "
-        f"current directory.\n\n"
+        f"the calibration and synthesized data below.\n\n"
+        f"For each file you create, output it in this exact format:\n"
+        f"FILE: <filename>\n"
+        f"```\n<file contents>\n```\n\n"
         f"Topic: {topic}\n"
         f"Calibration: {level_context}\n\n"
         f"Synthesized Data:\n{learning_data}"
     )
+
+
+def write_files_from_response(response_text, target_dir):
+    pattern = re.compile(r"FILE:\s*(\S+)\s*\n```[^\n]*\n(.*?)```", re.DOTALL)
+    matches = pattern.findall(response_text)
+    if not matches:
+        print("[-] No FILE blocks found in response. Saving raw output as output.md")
+        Path(target_dir, "output.md").write_text(response_text, encoding="utf-8")
+        return
+
+    for filename, contents in matches:
+        file_path = Path(target_dir) / filename
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text(contents, encoding="utf-8")
+        print(f"[+] Created: {file_path}")
 
 
 def run_claude_bridge(md_file_path, target_dir):
@@ -42,32 +62,32 @@ def run_claude_bridge(md_file_path, target_dir):
         learning_data = file.read()
 
     topic = Path(md_file_path).stem
-
     user_response = assess_user_baseline(topic)
     instruction = build_calibrated_prompt(topic, user_response, learning_data)
 
-    print(f"\n[*] Bridging data to Claude Code. Target directory: {target_dir}")
+    print(f"\n[*] Sending calibrated prompt to Claude API...")
 
+    api_key = None
     try:
-        api_key_process = subprocess.run(
-            ['api-pilot', 'get', 'anthropic'],
-            capture_output=True,
-            text=True
-        )
-        if api_key_process.returncode == 0:
-            os.environ['ANTHROPIC_API_KEY'] = api_key_process.stdout.strip()
-        else:
-            print("[-] Warning: api-pilot returned an error. Falling back to environment ANTHROPIC_API_KEY.")
+        result = subprocess.run(['api-pilot', 'get', 'anthropic'], capture_output=True, text=True)
+        if result.returncode == 0:
+            api_key = result.stdout.strip()
     except FileNotFoundError:
         print("[-] Warning: api-pilot not found. Falling back to environment ANTHROPIC_API_KEY.")
 
-    try:
-        subprocess.run(["claude", instruction], cwd=target_dir)
-        print("[+] Claude Code execution completed.")
-    except FileNotFoundError:
-        print("[-] Error: 'claude' command not found. Verify @anthropic-ai/claude-code is installed globally.")
-    except Exception as e:
-        print(f"[-] Execution failed: {e}")
+    client = anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
+
+    message = client.messages.create(
+        model="claude-opus-4-7",
+        max_tokens=8096,
+        messages=[{"role": "user", "content": instruction}],
+    )
+
+    response_text = message.content[0].text
+    print(f"[*] Tokens used — input: {message.usage.input_tokens}, output: {message.usage.output_tokens}")
+
+    write_files_from_response(response_text, target_dir)
+    print("[+] Done.")
 
 
 if __name__ == "__main__":
