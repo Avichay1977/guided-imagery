@@ -125,6 +125,25 @@ class FalsifierEngine:
             )
 
         # ------------------------------------------------------------------
+        # Check 6: exposure-matched calmar (diagnostic only, non-blocking)
+        # ------------------------------------------------------------------
+        em_calmar = strategy_metrics.get("exposure_matched_calmar")
+        if em_calmar is not None and em_calmar != float("inf"):
+            s_calmar_v = strategy_metrics.get("calmar_ratio", 0) or 0
+            em_pass = s_calmar_v >= em_calmar
+            checks["exposure_matched_calmar"] = {
+                "pass": em_pass,
+                "diagnostic_only": True,
+                "strategy_calmar": s_calmar_v,
+                "exposure_matched_calmar": em_calmar,
+            }
+            status = "PASS" if em_pass else "FAIL"
+            warnings.append(
+                f"EXPOSURE_MATCHED_{status}: "
+                f"strategy_calmar={s_calmar_v:.3f} vs exposure_matched_calmar={em_calmar:.3f}"
+            )
+
+        # ------------------------------------------------------------------
         # Warnings (non-blocking)
         # ------------------------------------------------------------------
         if trades_pass and total_trades < 50:

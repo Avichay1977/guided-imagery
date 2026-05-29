@@ -1,6 +1,8 @@
 import argparse
 import sys
 
+import pandas as pd
+
 from data_loader import DataLoader
 from features import FeatureEngine
 from backtester import Backtester, BacktestConfig
@@ -9,6 +11,7 @@ from execution import ExecutionSimulator
 from metrics import MetricsEngine, MetricsConfig
 from falsifier import FalsifierEngine, FalsifierConfig
 from diagnostics import SignalDiagnostics
+from exposure_benchmark import ExposureMatchedBenchmarkEngine, compute_exposure_pct
 
 
 def _print_section(title: str, data: dict) -> None:
@@ -144,6 +147,27 @@ def main() -> None:
     benchmark_equity = _build_benchmark_equity(df, config.initial_cash)
     benchmark_metrics = engine.calculate_benchmark(benchmark_equity)
     _print_section("BENCHMARK (buy & hold)", benchmark_metrics)
+
+    # --------------------------------------------------
+    # Exposure-Matched Benchmark
+    # --------------------------------------------------
+    exposure_pct = compute_exposure_pct(results["trades"], df)
+    bm_close_s = pd.Series(df["close"].values, index=df.index)
+    em = ExposureMatchedBenchmarkEngine().calculate(
+        strategy_equity_curve=results["equity_curve"],
+        benchmark_close=bm_close_s,
+        initial_cash=config.initial_cash,
+        exposure_time_pct=exposure_pct,
+    )
+    _print_section("EXPOSURE-MATCHED BENCHMARK", {
+        k: v for k, v in em.items()
+        if k not in {"exposure_matched_equity_curve", "exposure_matched_drawdown_curve"}
+    })
+
+    # Update strategy_metrics with em_calmar so falsifier gets the diagnostic
+    strategy_metrics["exposure_matched_calmar"] = (
+        em["exposure_matched_calmar"] if em["exposure_matched_calmar"] != float("inf") else 0.0
+    )
 
     # --------------------------------------------------
     # Strategy vs Benchmark

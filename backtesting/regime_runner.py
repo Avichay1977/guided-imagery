@@ -17,7 +17,9 @@ from features import FeatureEngine
 from backtester import Backtester, BacktestConfig
 from portfolio import PortfolioTracker
 from execution import ExecutionSimulator
+from metrics import MetricsEngine, MetricsConfig
 from regime_analysis import RegimeAnalysisEngine
+from exposure_benchmark import ExposureMatchedBenchmarkEngine, compute_exposure_pct
 
 
 # ---------------------------------------------------------------------------
@@ -94,14 +96,37 @@ def run_regime_analysis(
                 strat_series, bench_series, bt_results["trades"]
             )
 
+            # Overall (full-period) exposure-matched metrics
+            exp_pct = compute_exposure_pct(bt_results["trades"], df)
+            em_close_s = pd.Series(df["close"].values, index=df.index)
+            em = ExposureMatchedBenchmarkEngine().calculate(
+                strategy_equity_curve=bt_results["equity_curve"],
+                benchmark_close=em_close_s,
+                initial_cash=config.initial_cash,
+                exposure_time_pct=exp_pct,
+            )
+            me_full = MetricsEngine(MetricsConfig(periods_per_year=252))
+            full_sm = me_full.calculate_all(bt_results["equity_curve"], bt_results["trades"])
+            full_s_calmar = full_sm.get("calmar_ratio", 0.0) or 0.0
+            em_calmar_val = em.get("exposure_matched_calmar", 0.0)
+            if em_calmar_val == float("inf"):
+                em_calmar_val = 0.0
+            calmar_delta = round(float(full_s_calmar) - float(em_calmar_val), 3)
+
             for year, yr in analysis["years"].items():
                 row: dict = {"ticker": ticker, "year": year}
                 row.update(yr)
                 row["warnings"] = "; ".join(yr["warnings"])
+                row["exposure_time_pct"] = round(exp_pct, 1)
+                row["exposure_matched_cagr_pct"] = em.get("exposure_matched_cagr_pct", 0.0)
+                row["exposure_matched_max_drawdown_pct"] = em.get("exposure_matched_max_drawdown_pct", 0.0)
+                row["exposure_matched_calmar"] = em_calmar_val
+                row["strategy_vs_exposure_matched_calmar_delta"] = calmar_delta
                 all_rows.append(row)
 
             print(
-                f"  {len(bt_results['trades'])} trades  |  "
+                f"  {len(bt_results['trades'])} trades  |  exp={exp_pct:.1f}%  |  "
+                f"em_calmar={em_calmar_val:.3f}  delta={calmar_delta:+.3f}  |  "
                 f"{len(analysis['all_warnings'])} warnings"
             )
 
@@ -190,6 +215,35 @@ def _print_regime_summary(df: pd.DataFrame) -> None:
         f"\n  Tickers beating benchmark calmar ALL years: "
         f"{beat_count}/{total_count}"
     )
+
+    # Exposure-matched diagnostic (per ticker)
+    if "exposure_matched_calmar" in df.columns:
+        print(f"\n  Exposure-Matched Benchmark Diagnostic:")
+        em_ticker = (
+            df.groupby("ticker")
+            .agg(
+                exposure_time_pct=("exposure_time_pct", "first"),
+                exposure_matched_calmar=("exposure_matched_calmar", "first"),
+                strategy_vs_em_delta=("strategy_vs_exposure_matched_calmar_delta", "first"),
+            )
+            .reset_index()
+            .sort_values("strategy_vs_em_delta", ascending=False)
+        )
+        print(f"  {'Ticker':<8} {'Exp%':>7} {'EM_Calmar':>11} {'Delta':>8}")
+        print(f"  {'-'*8} {'-'*7} {'-'*11} {'-'*8}")
+        for _, row in em_ticker.iterrows():
+            flag = "✓" if row.strategy_vs_em_delta >= 0 else "✗"
+            print(
+                f"  {row.ticker:<8} "
+                f"{row.exposure_time_pct:>7.1f} "
+                f"{row.exposure_matched_calmar:>11.3f} "
+                f"{row.strategy_vs_em_delta:>+8.3f}  {flag}"
+            )
+        em_pass = (em_ticker["strategy_vs_em_delta"] >= 0).sum()
+        print(
+            f"\n  Tickers beating exposure-matched calmar: "
+            f"{em_pass}/{len(em_ticker)}"
+        )
 
 
 # ---------------------------------------------------------------------------

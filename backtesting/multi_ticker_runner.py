@@ -25,6 +25,7 @@ from execution import ExecutionSimulator
 from metrics import MetricsEngine, MetricsConfig
 from falsifier import FalsifierEngine, FalsifierConfig
 from diagnostics import SignalDiagnostics
+from exposure_benchmark import ExposureMatchedBenchmarkEngine, compute_exposure_pct
 
 
 # ---------------------------------------------------------------------------
@@ -60,6 +61,11 @@ class TickerResult:
     rows_reaching_min_score: int = 0
     signal_rate_pct: float = 0.0
     top_bottlenecks: str = ""
+    exposure_time_pct: float = 0.0
+    exposure_matched_cagr_pct: float = 0.0
+    exposure_matched_max_drawdown_pct: float = 0.0
+    exposure_matched_calmar: float = 0.0
+    strategy_vs_exposure_matched_calmar_delta: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -172,6 +178,20 @@ class PortfolioValidator:
         # Extra aggregate stats
         exp_rs = [r.expectancy_per_trade_R for r in completed if r.total_trades > 0]
 
+        # Exposure-matched aggregate stats
+        exp_pcts = [r.exposure_time_pct for r in completed]
+        avg_exposure_pct = statistics.mean(exp_pcts) if exp_pcts else 0.0
+        em_calmars = [
+            r.exposure_matched_calmar for r in completed
+            if r.total_trades > 0 and r.exposure_matched_calmar != float("inf")
+        ]
+        avg_em_calmar = statistics.mean(em_calmars) if em_calmars else 0.0
+        em_deltas = [r.strategy_vs_exposure_matched_calmar_delta for r in completed if r.total_trades > 0]
+        avg_em_delta = statistics.mean(em_deltas) if em_deltas else 0.0
+        tickers_beating_em = sum(
+            1 for r in completed if r.total_trades > 0 and r.strategy_vs_exposure_matched_calmar_delta >= 0
+        )
+
         return {
             "overall_verdict": "RESEARCH-GO" if overall_pass else "NO-GO",
             "overall_pass": overall_pass,
@@ -193,6 +213,10 @@ class PortfolioValidator:
             "tickers_with_insufficient_trades": sum(1 for r in completed if r.total_trades < 30),
             "tickers_with_positive_expectancy": pos_exp,
             "tickers_with_calmar_above_benchmark": sum(1 for r in completed if r.calmar_ratio >= r.benchmark_calmar_ratio),
+            "average_exposure_time_pct": round(avg_exposure_pct, 1),
+            "average_exposure_matched_calmar": round(avg_em_calmar, 3),
+            "average_strategy_vs_em_calmar_delta": round(avg_em_delta, 3),
+            "tickers_beating_exposure_matched_calmar": tickers_beating_em,
         }
 
 
@@ -290,6 +314,25 @@ class MultiTickerRunner:
                 result.benchmark_max_drawdown_pct = _safe(bm.get("max_drawdown_pct"))
                 result.benchmark_sharpe = _safe(bm.get("sharpe_ratio"))
                 result.benchmark_calmar_ratio = _safe(bm.get("calmar_ratio"))
+
+            # Exposure-matched benchmark (diagnostic)
+            exp_pct = compute_exposure_pct(trades, df)
+            result.exposure_time_pct = round(exp_pct, 1)
+            em_close_s = pd.Series(df["close"].values, index=df.index)
+            em = ExposureMatchedBenchmarkEngine().calculate(
+                strategy_equity_curve=bt_results["equity_curve"],
+                benchmark_close=em_close_s,
+                initial_cash=self.config.initial_cash,
+                exposure_time_pct=exp_pct,
+            )
+            result.exposure_matched_cagr_pct = _safe(em.get("exposure_matched_cagr_pct"))
+            result.exposure_matched_max_drawdown_pct = _safe(em.get("exposure_matched_max_drawdown_pct"))
+            em_cal = em.get("exposure_matched_calmar", 0.0)
+            result.exposure_matched_calmar = _safe(em_cal)
+            result.strategy_vs_exposure_matched_calmar_delta = round(
+                result.calmar_ratio - result.exposure_matched_calmar, 3
+            )
+            sm["exposure_matched_calmar"] = result.exposure_matched_calmar
 
             gate = FalsifierEngine(FalsifierConfig()).evaluate(
                 strategy_metrics=sm,
