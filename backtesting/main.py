@@ -7,6 +7,7 @@ from backtester import Backtester, BacktestConfig
 from portfolio import PortfolioTracker
 from execution import ExecutionSimulator
 from metrics import MetricsEngine, MetricsConfig
+from falsifier import FalsifierEngine, FalsifierConfig
 
 
 def _print_section(title: str, data: dict) -> None:
@@ -136,12 +137,50 @@ def main() -> None:
     }
     _print_section("STRATEGY VS BENCHMARK", comparison)
 
-    # Summary verdict
+    # --------------------------------------------------
+    # Falsifier Gate
+    # --------------------------------------------------
+    falsifier = FalsifierEngine(FalsifierConfig())
+    ambiguous_pct = (
+        results["ambiguous_exits"] / len(results["trades"]) * 100
+        if results["trades"] else 0.0
+    )
+    gate = falsifier.evaluate(
+        strategy_metrics=strategy_metrics,
+        benchmark_metrics=benchmark_metrics,
+        total_trades=len(results["trades"]),
+        ambiguous_exits_pct=ambiguous_pct,
+    )
+
+    print("\n=== FALSIFIER GATE ===")
+    for check_name, detail in gate["checks"].items():
+        status = "PASS" if detail.get("pass") else "FAIL"
+        if detail.get("skipped"):
+            status = "SKIP"
+        print(f"  [{status}] {check_name}: {detail}")
+    if gate["failure_reasons"]:
+        print("  failure_reasons:")
+        for r in gate["failure_reasons"]:
+            print(f"    ✗ {r}")
+    if gate["warnings"]:
+        print("  warnings:")
+        for w in gate["warnings"]:
+            print(f"    ⚠ {w}")
+    print(f"  overall_pass: {gate['overall_pass']}")
+
+    # Summary verdict — depends on FalsifierEngine
     s_calmar = strategy_metrics.get("calmar_ratio", 0)
     b_calmar = benchmark_metrics.get("calmar_ratio", 0)
     exp_r = strategy_metrics.get("expectancy_per_trade_r", 0)
 
     print("\n--- VERDICT ---")
+    if not gate["overall_pass"]:
+        print("  ✗ FALSIFIER GATE: FAIL")
+        for r in gate["failure_reasons"]:
+            print(f"      {r}")
+        print("  → NO-GO: strategy not validated")
+        return
+
     if exp_r is not None and exp_r <= 0:
         print("  ✗ expectancy_per_trade_R ≤ 0 → edge not confirmed")
     else:
