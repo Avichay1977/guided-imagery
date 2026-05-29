@@ -4,6 +4,12 @@ import pandas as pd
 import yfinance as yf
 
 
+def fetch_yfinance_to_csv(ticker: str, start: str, end: str, output: str) -> Path:
+    """Fetch OHLCV from yfinance, save to CSV, and return the output Path."""
+    fetch_and_save(ticker, start, end, output)
+    return Path(output)
+
+
 def fetch_and_save(ticker: str, start: str, end: str, output: str) -> None:
     df = yf.download(
         ticker,
