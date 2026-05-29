@@ -8,6 +8,13 @@ Invariants verified:
   - signal == 1 only when all four breakout conditions hold
   - drop_warmup=False keeps all rows; drop_warmup=True drops NaN-feature rows
   - Input DataFrame is not mutated
+
+  v2 optional context features:
+  - ema_50 is shifted by 1
+  - market_trend uses shifted ema_50 and ema_200; "neutral" during warmup
+  - atr_pct = atr_14 / close.shift(1)
+  - volatility_regime "extreme" only when atr_pct > shifted rolling 90th percentile
+  - relative_strength is NOT added (requires benchmark data)
 """
 
 import numpy as np
@@ -191,3 +198,137 @@ def test_input_not_mutated():
     cols_before = set(df.columns)
     FeatureEngine().generate_shifted_features(df)
     assert set(df.columns) == cols_before, "input DataFrame must not gain new columns"
+
+
+# ---------------------------------------------------------------------------
+# v2 optional context feature tests
+# ---------------------------------------------------------------------------
+
+def test_ema_50_is_shifted():
+    """ema_50[k] must equal raw EWM(span=50) value at k-1."""
+    df = _flat_bars(60)
+    out = FeatureEngine().generate_shifted_features(df)
+
+    raw_ema = df["close"].ewm(span=50, adjust=False, min_periods=50).mean()
+    for k in range(50, 60):
+        assert out["ema_50"].iloc[k] == pytest.approx(
+            raw_ema.iloc[k - 1], rel=1e-9
+        ), f"ema_50 mismatch at bar {k}"
+
+
+def test_market_trend_uses_shifted_ema_50_and_ema_200():
+    """
+    With a steadily rising price series, shifted ema_50 > shifted ema_200
+    after both warmup periods complete → market_trend must be "bullish".
+    """
+    n = 210
+    dates = pd.date_range("2020-01-01", periods=n, freq="B")
+    closes = [100.0 + i * 0.5 for i in range(n)]
+    df = pd.DataFrame(
+        {
+            "open": closes,
+            "high": [c + 1 for c in closes],
+            "low": [c - 1 for c in closes],
+            "close": closes,
+            "volume": 1_000.0,
+        },
+        index=dates,
+    )
+    out = FeatureEngine().generate_shifted_features(df)
+
+    # After bar 201, ema_50 tracks more recent (higher) prices than ema_200
+    # → ema_50 > ema_200 → "bullish"
+    assert (out["market_trend"].iloc[205:] == "bullish").all(), (
+        "Expected 'bullish' market_trend for rising price series after warmup"
+    )
+
+
+def test_market_trend_neutral_during_warmup():
+    """
+    ema_200 is NaN until bar 200 (200 prior bars + shift).
+    market_trend must be "neutral" for all bars before both EMAs are valid.
+    """
+    df = _flat_bars(210)
+    out = FeatureEngine().generate_shifted_features(df)
+
+    assert (out["market_trend"].iloc[:200] == "neutral").all(), (
+        "market_trend must be 'neutral' during ema_200 warmup period"
+    )
+
+
+def test_atr_pct_uses_shifted_safe_values():
+    """atr_pct must equal atr_14 / close.shift(1) — no same-bar data."""
+    df = _flat_bars(30)
+    out = FeatureEngine().generate_shifted_features(df)
+
+    expected = out["atr_14"] / out["close"].shift(1)
+    pd.testing.assert_series_equal(
+        out["atr_pct"],
+        expected,
+        check_names=False,
+        rtol=1e-9,
+    )
+
+
+def test_volatility_regime_extreme_when_above_shifted_rolling_threshold():
+    """
+    Baseline period (300 bars): ATR ≈ 2 → atr_pct ≈ 0.02.
+    Spike period (150 bars): ATR ≈ 100 → atr_pct ≈ 1.00.
+
+    After the spike propagates through the ATR rolling window (~15 bars)
+    and the threshold is established from the normal baseline, at least
+    one bar in the spike window must have volatility_regime == "extreme".
+    """
+    n_normal = 300
+    n_spike = 150
+    n = n_normal + n_spike
+
+    dates = pd.date_range("2020-01-01", periods=n, freq="B")
+    high = [101.0] * n_normal + [150.0] * n_spike
+    low = [99.0] * n_normal + [50.0] * n_spike
+    close = [100.0] * n
+
+    df = pd.DataFrame(
+        {
+            "open": close,
+            "high": high,
+            "low": low,
+            "close": close,
+            "volume": 1_000.0,
+        },
+        index=dates,
+    )
+    out = FeatureEngine().generate_shifted_features(df)
+
+    # Allow 30 bars after the spike onset for ATR and threshold to settle
+    spike_slice = out["volatility_regime"].iloc[n_normal + 30:]
+    assert (spike_slice == "extreme").any(), (
+        "Expected 'extreme' volatility_regime during high-volatility period"
+    )
+
+
+def test_volatility_regime_normal_when_not_extreme():
+    """
+    Flat bars → constant ATR → all atr_pct values equal.
+    The 90th percentile of a constant series equals that constant.
+    atr_pct > threshold is False → every bar is "normal".
+    """
+    df = _flat_bars(270)
+    out = FeatureEngine().generate_shifted_features(df)
+
+    assert not (out["volatility_regime"] == "extreme").any(), (
+        "Constant-ATR series must never produce 'extreme' volatility_regime"
+    )
+
+
+def test_no_relative_strength_added_without_benchmark():
+    """
+    relative_strength requires a benchmark (e.g. SPY).
+    FeatureEngine must NOT add this column from single-ticker data.
+    """
+    df = _flat_bars(30)
+    out = FeatureEngine().generate_shifted_features(df)
+
+    assert "relative_strength" not in out.columns, (
+        "relative_strength must not be computed without benchmark data"
+    )
