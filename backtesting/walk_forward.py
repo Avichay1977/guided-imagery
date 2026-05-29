@@ -50,10 +50,12 @@ class WalkForwardEngine:
         config: Optional[WalkForwardConfig] = None,
         backtester_config: Optional[BacktestConfig] = None,
         random_config: Optional[RandomizedBenchmarkConfig] = None,
+        strategy_variant=None,
     ) -> None:
         self.config = config or WalkForwardConfig()
         self.backtester_config = backtester_config or BacktestConfig()
         self.random_config = random_config or RandomizedBenchmarkConfig()
+        self.strategy_variant = strategy_variant
 
     # ------------------------------------------------------------------
     # Public API
@@ -276,7 +278,12 @@ class WalkForwardEngine:
 
         portfolio = PortfolioTracker(initial_cash=bcfg.initial_cash)
         execution = ExecutionSimulator(slippage_pct=0.0005, fixed_fee=2.0)
-        bt = Backtester(config=bcfg, portfolio=portfolio, execution=execution).run(df_test)
+        bt = Backtester(
+            config=bcfg,
+            portfolio=portfolio,
+            execution=execution,
+            strategy_variant=self.strategy_variant,
+        ).run(df_test)
 
         trades = bt["trades"]
         n_trades = len(trades)

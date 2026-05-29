@@ -1,10 +1,18 @@
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, Optional
 import pandas as pd
 
 
 @dataclass
 class BacktestConfig:
+    # Strategy identity
+    strategy_name: str = "BreakoutVolumeConfluence"
+    strategy_version: str = "v1"
+    strategy_description: str = (
+        "Breakout above 20-day high with volume surge (1.5x avg), "
+        "price above EMA-200, ATR-based stop, 3R take-profit."
+    )
+    # Trading parameters
     initial_cash: float = 100_000
     max_risk_pct: float = 0.01
     max_drawdown_kill_pct: float = 0.15
@@ -16,12 +24,19 @@ class BacktestConfig:
 
 
 class Backtester:
-    def __init__(self, config: BacktestConfig, portfolio, execution):
+    def __init__(self, config: BacktestConfig, portfolio, execution, strategy_variant=None):
         self.config = config
         self.portfolio = portfolio
         self.execution = execution
+        self.strategy_variant = strategy_variant
 
     def run(self, df: pd.DataFrame) -> dict:
+        # When a variant is provided, let it prepare additional features and
+        # override the signal column. A copy is made so caller's df is untouched.
+        if self.strategy_variant is not None:
+            df = self.strategy_variant.prepare_features(df.copy())
+            df["signal"] = self.strategy_variant.generate_signal(df)
+
         trades = []
         equity_curve = []
         kill_switch_triggered = False
@@ -64,7 +79,10 @@ class Backtester:
             if not self._has_valid_value(row, "signal") or row.signal != 1:
                 continue
 
-            score = self.calculate_confluence_score(row)
+            if self.strategy_variant is not None:
+                score = self.strategy_variant.calculate_score(row)
+            else:
+                score = self.calculate_confluence_score(row)
             if score < self.config.min_confluence_score:
                 continue
 
