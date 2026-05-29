@@ -8,6 +8,7 @@ from portfolio import PortfolioTracker
 from execution import ExecutionSimulator
 from metrics import MetricsEngine, MetricsConfig
 from falsifier import FalsifierEngine, FalsifierConfig
+from diagnostics import SignalDiagnostics
 
 
 def _print_section(title: str, data: dict) -> None:
@@ -52,6 +53,35 @@ def main() -> None:
     # --------------------------------------------------
     fe = FeatureEngine()
     df = fe.generate_shifted_features(df, drop_warmup=False)
+
+    # --------------------------------------------------
+    # Signal diagnostics (funnel analysis — no trades)
+    # --------------------------------------------------
+    diag_config = BacktestConfig()   # read min_confluence_score from default config
+    diag_result = SignalDiagnostics().analyze_feature_funnel(
+        df, min_confluence_score=diag_config.min_confluence_score
+    )
+    print("\n=== SIGNAL DIAGNOSTICS ===")
+    print(f"  total_rows:                    {diag_result['total_rows']}")
+    print(f"  rows_with_valid_core_features: {diag_result['rows_with_valid_core_features']}")
+    print(f"  rows_with_valid_atr:           {diag_result['rows_with_valid_atr']}")
+    print("  condition_rates_pct:")
+    for cond, rate in diag_result["condition_rates_pct"].items():
+        count = diag_result["condition_counts"].get(cond, "?")
+        print(f"    {cond}: {rate}%  ({count} rows)")
+    print("  score_distribution:")
+    for score, count in sorted(diag_result["score_distribution"].items()):
+        bar = "█" * min(count // 5 + (1 if count > 0 else 0), 40)
+        print(f"    score {score}: {count:4d}  {bar}")
+    print(f"  signal_count:          {diag_result['signal_count']}  ({diag_result['signal_rate_pct']}%)")
+    print(f"  rows_reaching_score≥{diag_config.min_confluence_score}: {diag_result['rows_reaching_min_score']}  ({diag_result['min_score_rate_pct']}%)")
+    if diag_result["bottlenecks"]:
+        print("  bottlenecks:")
+        for b in diag_result["bottlenecks"]:
+            print(f"    ⚠ {b}")
+    if diag_result["warnings"]:
+        for w in diag_result["warnings"]:
+            print(f"    ℹ {w}")
 
     report = loader.get_last_report()
     if report.get("invalid_geometry_rows_corrected", 0) > len(df) * 0.01:
