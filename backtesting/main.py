@@ -2,6 +2,7 @@ import argparse
 import sys
 
 from data_loader import DataLoader
+from features import FeatureEngine
 from backtester import Backtester, BacktestConfig
 from portfolio import PortfolioTracker
 from execution import ExecutionSimulator
@@ -44,6 +45,12 @@ def main() -> None:
         sys.exit(1)
 
     _print_section("DATA QUALITY REPORT", loader.get_last_report())
+
+    # --------------------------------------------------
+    # Feature engineering (all shifts applied — no lookahead)
+    # --------------------------------------------------
+    fe = FeatureEngine()
+    df = fe.generate_shifted_features(df, drop_warmup=False)
 
     report = loader.get_last_report()
     if report.get("invalid_geometry_rows_corrected", 0) > len(df) * 0.01:

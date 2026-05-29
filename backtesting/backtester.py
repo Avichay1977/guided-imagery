@@ -77,11 +77,11 @@ class Backtester:
             if gap_pct > self.config.max_entry_gap_pct or gap_pct < self.config.min_entry_gap_pct:
                 continue
 
-            if not self._has_valid_value(row, "atr") or row.atr <= 0:
+            if not self._has_valid_value(row, "atr_14") or row.atr_14 <= 0:
                 continue
 
             entry_price = self.execution.apply_slippage(next_row.open, direction="buy")
-            stop_price = entry_price - (self.config.atr_stop_multiplier * row.atr)
+            stop_price = entry_price - (self.config.atr_stop_multiplier * row.atr_14)
             risk_per_share = entry_price - stop_price
 
             if risk_per_share <= 0:

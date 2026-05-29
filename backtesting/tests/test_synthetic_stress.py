@@ -39,7 +39,8 @@ def make_bars(n: int, price: float = _PRICE, atr: float = _ATR) -> pd.DataFrame:
     """
     Return n flat daily bars where every scoring criterion is satisfied
     and signal=0 on every bar.  Callers override specific cells to inject
-    signals and price events.
+    signals and price events.  atr_14 is pre-set to the given value so
+    tests do not need a FeatureEngine warmup period.
     """
     dates = pd.date_range("2020-01-01", periods=n, freq="B")
     df = pd.DataFrame(
@@ -50,7 +51,7 @@ def make_bars(n: int, price: float = _PRICE, atr: float = _ATR) -> pd.DataFrame:
             "close": price,
             "volume": 1_000_000.0,
             "signal": 0,
-            "atr": atr,
+            "atr_14": atr,
             # Technical structure fields (all pre-computed, all valid)
             "ema_200": price - 5.0,       # below close → close > ema_200 ✓
             "local_high_20": price - 1.0, # below close → breakout ✓
