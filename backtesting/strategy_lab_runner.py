@@ -27,6 +27,36 @@ from randomized_benchmark import RandomizedBenchmarkConfig, RandomizedTimingBenc
 from strategy_variants import StrategyVariant, get_variant
 from walk_forward import WalkForwardConfig, WalkForwardEngine
 
+from protocol_v1_2_metric_sources import build_summary_row_with_v1_2_metrics
+
+
+# ---------------------------------------------------------------------------
+# v1.2 schema wiring helper
+# ---------------------------------------------------------------------------
+
+def enrich_lab_row(base_row: dict, metric_sources: "list[dict] | None" = None) -> dict:
+    """
+    Return a new summary row that includes v1.2 metric source fields alongside
+    the existing v1.1 fields.
+
+    This is the documented integration point for future runners: when a run
+    collects richer metric objects (total returns, p95 comparators), pass them
+    here as metric_sources so the output CSV carries v1.2-ready fields from
+    the start. If metric_sources is None or empty, the eight v1.2 metric
+    fields are added as None and will surface as *_INSUFFICIENT_DATA in
+    downstream v1.2 reporting.
+
+    Rules (enforced by build_summary_row_with_v1_2_metrics):
+    - Returns a new dict; base_row is never mutated.
+    - All existing v1.1 fields preserved unchanged.
+    - Protected v1.1 keys (verdict / status / failure_reasons) cannot be
+      overwritten by any source.
+    - p75 source keys are never aliased to p95 fields.
+    - Does not add v1.2 diagnostic labels — call the reporting adapter for that.
+    - Never emits RESEARCH-GO or LIVE-GO.
+    """
+    return build_summary_row_with_v1_2_metrics(base_row, metric_sources)
+
 
 # ---------------------------------------------------------------------------
 # Core runner
