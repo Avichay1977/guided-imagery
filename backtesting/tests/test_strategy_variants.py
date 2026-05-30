@@ -13,6 +13,7 @@ from backtester import BacktestConfig
 from features import FeatureEngine
 from strategy_variants import (
     BreakoutVolumeConfluence_v1,
+    MomentumContinuationConfluence_v1,
     TrendPullbackConfluence_v1,
     get_variant,
 )
@@ -186,3 +187,66 @@ def test_trend_pullback_signal_more_frequent_than_v1_on_synthetic_trend():
         f"TrendPullback should generate at least 5 signals on a 600-bar "
         f"uptrend; got {count_v2}"
     )
+
+
+# ---------------------------------------------------------------------------
+# 5. MomentumContinuation has required features and correct identity
+# ---------------------------------------------------------------------------
+
+def test_momentum_continuation_has_required_features_and_identity():
+    v3 = MomentumContinuationConfluence_v1()
+
+    assert v3.strategy_name == "MomentumContinuationConfluence"
+    assert v3.strategy_version == "v1"
+
+    req = v3.required_features
+    assert "ema_200" in req
+    assert "ema_50" in req
+    assert "market_trend" in req
+    assert "atr_14" in req
+
+    d = v3.describe()
+    assert d["strategy_name"] == "MomentumContinuationConfluence"
+    assert d["strategy_version"] == "v1"
+
+    v3_reg = get_variant("MomentumContinuationConfluence_v1")
+    assert v3_reg.strategy_name == "MomentumContinuationConfluence"
+
+
+# ---------------------------------------------------------------------------
+# 6. MomentumContinuation fires more than TrendPullback on synthetic uptrend
+# ---------------------------------------------------------------------------
+
+def test_momentum_continuation_more_frequent_than_v1_on_uptrend():
+    """
+    On a steady uptrend with flat volume (no 1.5× spikes), v1 (BreakoutVolume)
+    fires rarely. MomentumContinuation requires no volume spike and should
+    fire far more often whenever trend + 5-bar momentum conditions are met.
+    """
+    v1 = BreakoutVolumeConfluence_v1()
+    v3 = MomentumContinuationConfluence_v1()
+
+    df_raw = _make_trend_df(n=600)
+    df = _apply_features(df_raw)
+
+    df_v1 = v1.prepare_features(df.copy())
+    count_v1 = int(v1.generate_signal(df_v1).sum())
+
+    df_v3 = v3.prepare_features(df.copy())
+    count_v3 = int(v3.generate_signal(df_v3).sum())
+
+    assert count_v3 > count_v1, (
+        f"MomentumContinuation ({count_v3}) should fire more than "
+        f"BreakoutVolume ({count_v1}) on a flat-volume uptrend"
+    )
+    assert count_v3 >= 10, (
+        f"Expected at least 10 signals on a 600-bar uptrend; got {count_v3}"
+    )
+
+    # close_5 and close_10 must be in prepared df
+    assert "close_5" in df_v3.columns
+    assert "close_10" in df_v3.columns
+
+    # Signal must be strictly 0 or 1
+    sig = v3.generate_signal(df_v3)
+    assert set(sig.unique()).issubset({0, 1})

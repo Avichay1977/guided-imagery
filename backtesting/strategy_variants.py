@@ -264,9 +264,114 @@ class TrendPullbackConfluence_v1(StrategyVariant):
 # Registry
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# MomentumContinuationConfluence v1  (new candidate)
+# ---------------------------------------------------------------------------
+
+class MomentumContinuationConfluence_v1(StrategyVariant):
+    """
+    Momentum continuation entry in a confirmed uptrend.
+
+    Hypothesis: price above both EMAs with positive short-term momentum
+    captures the continuation of an established trend. No pullback required —
+    wider participation in bull-market windows.
+
+    Entry logic (all features shifted to end-of-prior-bar):
+      1. market_trend == "bullish"  (ema_50 > ema_200, both shifted)
+      2. close > ema_200            (above long-term trend)
+      3. close > ema_50             (in upper trend zone)
+      4. close > close_5            (5-bar momentum positive)
+      5. volatility_regime != "extreme"
+      6. atr_14 > 0
+
+    Confluence scoring (max 6, threshold unchanged: min_confluence_score=5):
+      +1 close > ema_200
+      +1 market_trend == "bullish"
+      +1 close > ema_50
+      +1 close > close_5   (5-bar momentum)
+      +1 close > close_10  (10-bar momentum — stronger confirmation)
+      +1 volatility_regime != "extreme"
+    """
+
+    strategy_name = "MomentumContinuationConfluence"
+    strategy_version = "v1"
+    strategy_description = (
+        "Momentum continuation entry: price above ema_50 and ema_200 "
+        "with positive 5-bar momentum in a bullish trend regime, "
+        "outside extreme volatility. ATR-based stop, 3R take-profit."
+    )
+
+    momentum_window_short: int = 5
+    momentum_window_long: int = 10
+
+    @property
+    def required_features(self) -> list[str]:
+        return [
+            "ema_200", "ema_50", "market_trend",
+            "volatility_regime", "atr_14",
+        ]
+
+    def prepare_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add lagged close columns for momentum computation."""
+        df = df.copy()
+        df["close_5"]  = df["close"].shift(self.momentum_window_short)
+        df["close_10"] = df["close"].shift(self.momentum_window_long)
+        return df
+
+    def generate_signal(self, df: pd.DataFrame) -> pd.Series:
+        required_valid = (
+            df["ema_200"].notna()
+            & df["ema_50"].notna()
+            & df["atr_14"].notna()
+            & (df["atr_14"] > 0)
+            & df["market_trend"].notna()
+            & df["volatility_regime"].notna()
+            & df["close_5"].notna()
+        )
+
+        in_uptrend = (
+            (df["market_trend"] == "bullish")
+            & (df["close"] > df["ema_200"])
+            & (df["close"] > df["ema_50"])
+        )
+
+        momentum_positive = df["close"] > df["close_5"]
+        not_extreme = df["volatility_regime"] != "extreme"
+
+        return (required_valid & in_uptrend & momentum_positive & not_extreme).astype(int)
+
+    def calculate_score(self, row) -> int:
+        score = 0
+
+        if _valid(row, "close") and _valid(row, "ema_200") and row.close > row.ema_200:
+            score += 1
+
+        if _valid(row, "market_trend") and row.market_trend == "bullish":
+            score += 1
+
+        if _valid(row, "close") and _valid(row, "ema_50") and row.close > row.ema_50:
+            score += 1
+
+        if _valid(row, "close") and _valid(row, "close_5") and row.close > row.close_5:
+            score += 1
+
+        if _valid(row, "close") and _valid(row, "close_10") and row.close > row.close_10:
+            score += 1
+
+        if _valid(row, "volatility_regime") and row.volatility_regime != "extreme":
+            score += 1
+
+        return score
+
+
+# ---------------------------------------------------------------------------
+# Registry
+# ---------------------------------------------------------------------------
+
 REGISTRY: dict[str, type[StrategyVariant]] = {
     "BreakoutVolumeConfluence_v1": BreakoutVolumeConfluence_v1,
     "TrendPullbackConfluence_v1": TrendPullbackConfluence_v1,
+    "MomentumContinuationConfluence_v1": MomentumContinuationConfluence_v1,
 }
 
 
