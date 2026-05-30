@@ -89,11 +89,13 @@ The failures are **structural to the family**, not specific to any entry logic:
 - In a rising market, **a random entry is also frequently profitable**, so
   demonstrating timing skill above the randomized p75 distribution is intrinsically
   hard.
-- **Calmar is scale-invariant to exposure.** Scaling daily returns by an exposure
-  fraction reduces CAGR and max-drawdown by approximately the same factor, leaving
-  Calmar nearly unchanged. An exposure-matched benchmark is therefore *not* a
-  materially easier gate — confirmed observationally: exposure-matched Calmar
-  pass rates were within rounding of the Buy & Hold pass rates.
+- **Exposure-matched evaluation is a separate research question.** It must be
+  tested explicitly under Protocol v1.2 and must not be assumed to save or reject
+  any variant. As a starting observation only, in the existing v1.1 result files
+  the exposure-matched Calmar pass rates were close to the Buy & Hold pass rates;
+  this is an empirical observation on this data, not a general claim that
+  exposure-matched evaluation is easier, harder, or equivalent. The v1.2 layer
+  exists precisely to answer that question with its own table.
 
 ---
 
@@ -147,9 +149,9 @@ neither converts a v1.1 NO-GO into a pass.
 **A. Protocol v1.2 — Exposure-Fair Diagnostic Layer**
 A diagnostic-only layer asking a *different* question: does the family have an
 exposure-adjusted edge worth studying? This is an analysis layer, not a gate
-replacement. It cannot promote any v1.1 NO-GO. Given the scale-invariance finding
-in §6, this branch must first establish a metric that is *not* trivially
-equivalent to Buy & Hold Calmar before it can produce a meaningful signal.
+replacement. It cannot promote any v1.1 NO-GO. Exposure-matched evaluation must
+be tested explicitly and must not be assumed in advance to save or reject any
+variant; v1.2 reports its own side-by-side table against v1.1.
 
 **B. RelativeStrengthRotation_v1 — New Strategy Family**
 A shift from *entry timing* to *asset selection*: rank-and-rotate among the
