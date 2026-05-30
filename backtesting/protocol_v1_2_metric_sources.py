@@ -162,9 +162,52 @@ def has_required_v1_2_metrics(row: dict) -> bool:
     return True
 
 
+def build_summary_row_with_v1_2_metrics(
+    base_summary_row: dict,
+    metric_sources: "list[dict] | None" = None,
+) -> dict:
+    """
+    Return a new summary row that includes v1.2 metric source fields alongside
+    existing v1.1 fields.
+
+    Parameters
+    ----------
+    base_summary_row : existing v1.1 summary/split row (not mutated)
+    metric_sources   : optional list of source dicts to mine for v1.2 metrics.
+                       Sources are tried in order; the first non-None value for
+                       each field wins.
+
+    Returns a NEW dict that:
+    - Preserves every key from base_summary_row unchanged.
+    - Adds all eight V1_2_METRIC_FIELDS (None when no source supplied a value).
+    - Never overwrites protected v1.1 keys (verdict / status / failure_reasons).
+    - Never aliases p75 source keys to p95 metric fields.
+    - Does NOT add v1.2 diagnostic labels — use the reporting adapter for that.
+    - Never emits RESEARCH-GO or LIVE-GO.
+    """
+    combined: dict[str, Optional[float]] = {field: None for field in V1_2_METRIC_FIELDS}
+
+    for src in (metric_sources or []):
+        extracted = extract_v1_2_metric_overrides(src or {})
+        for field in V1_2_METRIC_FIELDS:
+            if combined[field] is None and extracted[field] is not None:
+                combined[field] = extracted[field]
+
+    # merge_v1_2_metric_overrides drops None values (to avoid clobbering
+    # existing v1.1 calmar fields with None), so after the merge we must
+    # re-fill any V1_2_METRIC_FIELDS that weren't provided, setting them to
+    # None so callers always find a consistent key set.
+    result = merge_v1_2_metric_overrides(base_summary_row, combined)
+    for field in V1_2_METRIC_FIELDS:
+        if field not in result:
+            result[field] = None
+    return result
+
+
 __all__ = [
     "V1_2_METRIC_FIELDS",
     "extract_v1_2_metric_overrides",
     "merge_v1_2_metric_overrides",
     "has_required_v1_2_metrics",
+    "build_summary_row_with_v1_2_metrics",
 ]
