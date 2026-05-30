@@ -101,18 +101,22 @@ The null is the prior. Evidence must clear both protocol gates to displace it.
 
 ## 5. Universe Definition
 
-The universe must be **frozen before any test is run** and may not be edited
-after results are seen.
+The universe is **frozen here, by ticker, before any test is run**, and may
+not be edited after results are seen.
 
-**Primary universe:** the existing 15-ticker baseline universe used by the
-multi-ticker runners in the repo (referenced in `multi_ticker_summary_*.csv`
-fixtures). The exact ticker list must be locked from an existing repo-defined
-universe file or constant; this document does not invent a new list.
+**Fixed universe (15 tickers, frozen by this document):**
 
-If the existing 15-ticker baseline is unavailable at implementation time, the
-fallback universe is the 12-ticker momentum10y universe used in
-`walk_forward_momentum10y.csv` and the strategy_lab outputs — frozen as it
-appears in the repo on the implementation date.
+    AAPL, MSFT, NVDA, AMD, META, AMZN, GOOGL, TSLA, NFLX, AVGO,
+    CRM, ORCL, INTC, CSCO, IBM
+
+There is no fallback universe. The universe is exactly these 15 tickers in
+exactly this order. Any alternate ticker list — including the prior 12-ticker
+momentum10y universe — constitutes a different variant and requires:
+
+- a new variant id (e.g. `RelativeStrengthRotation_v2`), AND
+- a new RDR explaining why the universe differs.
+
+Silent substitution of the universe is a protocol violation.
 
 **Universe rules:**
 - Universe membership is fixed for the entire test window.
@@ -292,18 +296,40 @@ Notes:
 ## 12. Exit / Rotation Logic
 
 - At each rebalance, the new target portfolio replaces the prior one.
-- **Hysteresis allowance:** an existing holding may remain in the portfolio
-  if its `rank_percentile` on the rebalance bar is ≥ 0.50, even if it is no
-  longer in the top N. This reduces churn. The threshold 0.50 is frozen.
+
+- **Hard cap on portfolio size:** the target portfolio carries **at most
+  N = 3 holdings** at any time. Hysteresis MUST NOT cause the portfolio to
+  hold more than N. This is a hard invariant.
+
+- **Hysteresis allowance, capped at N:** existing holdings whose
+  `rank_percentile` on the rebalance bar is ≥ 0.50 are preferred candidates
+  to remain. The selection algorithm at each rebalance is:
+
+      1. Keep all existing holdings with rank_percentile >= 0.50 (preliminary
+         keep-set).
+      2. If |keep-set| > N: keep only the top N of the keep-set, sorted by
+         composite_rs (descending; ties broken alphabetically per §10).
+         The remaining existing holdings are exited at this rebalance.
+      3. If |keep-set| < N: fill the remaining N - |keep-set| slots from the
+         top-ranked eligible non-held assets, sorted by composite_rs.
+      4. If still fewer than N tickers qualify after step 3, the remainder
+         is held in cash (per §13).
+
+  This algorithm guarantees the post-rebalance portfolio has exactly
+  min(N, number_of_eligible_tickers) holdings — never more than N.
+
 - **Forced exits:** an existing holding is exited at the next rebalance if
   any of these occur at the rebalance bar:
   - It fails the EMA200 trend filter.
   - It fails the liquidity or volatility filter.
-  - It dropped below `rank_percentile = 0.50`.
+  - It dropped below `rank_percentile = 0.50` AND is not retained by the
+    capped-keep step above.
+
 - **No intra-month exits.** There are no stops, no trailing stops, no
   take-profit targets, no kill switches inside the month. Risk control is
   performed at rebalance only. This is a defining property of the rotation
   family vs the entry-timing family.
+
 - **Cash:** capital not allocated to selected tickers sits in cash with a
   cash return of 0.0 by default.
 
@@ -327,13 +353,23 @@ Notes:
 
 - The three eligibility filters (trend / volatility / liquidity) are the
   rotation strategy's risk controls. They are evaluated at every rebalance.
-- **Concentration cap (universe-level):** no single ticker may receive more
-  than 1/N of NAV. Already enforced by §13.
+
+- **Allocation cap (per-position):** no single ticker may receive more
+  than 1/N = 33.3% of NAV at rebalance. Already enforced by §13.
+
+- **Cumulative-return concentration cap (per-ticker, default 25%):** the
+  strategy fails if a single ticker's contribution to cumulative OOS return
+  exceeds the existing configured concentration threshold. **Default is
+  25%**, matching the prior protocol regime. This threshold is NOT relaxed
+  by this variant. Any future raising of this cap requires a new RDR.
+
 - **Cash floor:** none. Cash is unconstrained between 0% and 100%.
+
 - **No kill switch on cumulative drawdown.** This differs from the
   entry-timing variants intentionally — drawdown management is achieved by
   the monthly trend-filter rotation, not by an emergency cash-out. This
   must be reported in v1.2 as part of the exposure profile.
+
 - **Risk-per-trade does not apply** at this layer. There are no "trades" in
   the entry-timing sense — there are rebalance allocations. The protocol
   v1.1 trade-count metrics will count each rebalance position as one "trade"
@@ -346,6 +382,17 @@ Notes:
 The walk-forward gate is the **only** decision gate. Verdicts must come from
 the existing `WalkForwardEngine.aggregate()` logic unchanged.
 
+**Core verdict labels (Protocol v1.1, decision-level):**
+
+    RESEARCH-GO
+    NO-GO
+    INSUFFICIENT-DATA
+
+These three are the only decision-level verdicts. The strings `V1_1_NO_GO`,
+`V1_1_RESEARCH_GO`, and `V1_1_INSUFFICIENT_DATA` are NOT decision-level
+verdicts — they are preserved/reporting labels used only by the v1.2
+side-by-side adapter, never as a replacement for a core v1.1 verdict.
+
 Required reporting (per the existing v1.1 schema):
 - `test_total_trades` (counted as rebalance positions, one per rebalance per
   selected ticker per split)
@@ -353,20 +400,28 @@ Required reporting (per the existing v1.1 schema):
 - `test_benchmark_calmar` (B1, per-ticker raw Buy & Hold aggregated)
 - `test_exposure_matched_calmar` (used by v1.2 layer; v1.1 may continue to
   report this column as-is)
-- `test_random_p75_calmar` (existing p75 randomized-timing comparator
-  retained as a legacy diagnostic; see §16 for the rotation-specific
-  comparator under v1.2)
+- `test_random_p75_calmar` (the v1.1 randomized comparator as currently
+  implemented; this is a v1.1 quantity. p75 is NOT a p95 — see §16 — and
+  must never be aliased to p95.)
 - `falsifier_pass`, `exposure_matched_pass`, `randomized_timing_pass`,
   `status`, `failure_reasons`
 
+**v1.1 randomized comparator:** v1.1 uses the **currently configured legacy
+randomized comparator as implemented in the repo** (today: a p75 Calmar
+threshold). This document does not change the v1.1 comparator. It also does
+not promote that comparator to p95 status — the p95 comparator belongs to
+v1.2 (§16) and is a separate quantity computed independently.
+
 **v1.1 pass criteria (unchanged from current protocol):**
 - ≥60% of eligible OOS splits exceed `test_benchmark_calmar`
-- ≥60% of eligible OOS splits pass the randomized timing comparator
+- ≥60% of eligible OOS splits pass the randomized timing comparator (as
+  currently implemented)
 - Minimum trade count per split satisfied
 - Falsifier signals do not invalidate the variant
 
-If any of these fails, the final verdict is `V1_1_NO_GO` — and this verdict
-is preserved verbatim through the v1.2 reporting adapter without alteration.
+If any of these fails, the final core verdict is `NO-GO`. The v1.2 reporting
+adapter preserves the core verdict as `v1_1_verdict_preserved` (which
+carries the corresponding `V1_1_*` reporting label), without altering it.
 
 **No weakening of v1.1.** No new "rotation-friendly" threshold can be
 introduced into v1.1 to make this variant pass. The v1.1 gate is fixed.
@@ -393,32 +448,48 @@ INSUFFICIENT_DATA:
 - `randomized_timing_p95_total_return`
 - `randomized_timing_p95_calmar`
 
-**Randomized-selection comparator (rotation-specific):**
+**Randomized-selection comparator (rotation-specific, v1.2 only):**
 
 - Same rebalance dates as the strategy.
 - Same N (number of holdings = 3).
-- Same fixed universe.
+- Same fixed universe (§5).
 - Same eligibility filters at each rebalance (trend / volatility / liquidity).
 - Asset selection randomized uniformly from the eligible set at each
   rebalance.
 - Minimum 1000 simulations per split.
-- Compute Calmar and total return per simulation, then take the p95 of each
-  across simulations.
+- Compute Calmar and total return per simulation, then take the **p95** of
+  each across simulations.
 - Compare strategy Calmar AND strategy total return to the p95 of each.
 - Strategy must beat BOTH p95 metrics to earn `TIMING_EDGE_PASS`.
   (Naming preserved from v1.2 even though the rotation equivalent is "asset
   selection edge" — the existing column names remain unchanged to avoid
   schema drift.)
-- The default p95 threshold is fixed by this document. Lowering it to p75 or
-  p50 after results is a forbidden move.
+- The default p95 threshold is fixed by this document. Lowering it to p75
+  or p50 after results is a forbidden move.
 
-**v1.2 labels emitted:**
+**Hard separation of p75 and p95:**
+- The v1.1 randomized comparator (§15) is computed and reported separately.
+  It is the **legacy comparator as currently implemented** (today: p75).
+- The v1.2 randomized comparator above is **p95**, computed independently.
+- p75 metrics must never be supplied to the v1.2 adapter's
+  `randomized_timing_p95_*` fields. The reporting layer already blocks this
+  via `protocol_v1_2_metric_sources` (forbidden aliases). This document
+  reaffirms the same boundary at the spec level: p75 ≠ p95, and any code
+  that conflates them violates this spec.
+
+**v1.2 labels emitted (reporting only — never decision-level verdicts):**
 - `exposure_edge_label` ∈ {`EXPOSURE_EDGE_PASS`, `EXPOSURE_EDGE_FAIL`,
   `EXPOSURE_EDGE_INSUFFICIENT_DATA`}
 - `timing_edge_label` ∈ {`TIMING_EDGE_PASS`, `TIMING_EDGE_FAIL`,
   `TIMING_EDGE_INSUFFICIENT_DATA`}
 - `v1_2_diagnostic_label` = `PORTFOLIO_DIAGNOSTIC_ONLY` (always)
-- `v1_1_verdict_preserved` = the unchanged v1.1 verdict
+- `v1_1_verdict_preserved` ∈ {`V1_1_NO_GO`, `V1_1_RESEARCH_GO`,
+  `V1_1_INSUFFICIENT_DATA`} — the **reporting form** of the core v1.1
+  verdict, copied through unchanged
+
+The `V1_1_*` strings are reporting/preservation labels for the v1.2
+side-by-side schema; the core decision-level verdict remains one of the
+three names in §15 (`RESEARCH-GO`, `NO-GO`, `INSUFFICIENT-DATA`).
 
 v1.2 never emits `RESEARCH-GO` or `LIVE-GO`. The reporting adapter already
 enforces this; this spec reaffirms it.
@@ -427,35 +498,39 @@ enforces this; this spec reaffirms it.
 
 ## 17. Falsification Criteria
 
-The variant is `V1_1_NO_GO` if any of the following hold (each criterion is
-sufficient on its own):
+The core v1.1 verdict is `NO-GO` if any of the following hold (each
+criterion is sufficient on its own):
 
 - F1 — Insufficient trades: fewer than the v1.1 minimum trade count per OOS
   split on a majority of splits.
-- F2 — Per-ticker concentration: >50% of cumulative OOS return concentrated
-  in a single ticker. Computed across the test window.
+- F2 — Per-ticker concentration: a single ticker's contribution to
+  cumulative OOS return exceeds the existing configured concentration
+  threshold (**default 25%**, matching the prior protocol regime — see §14).
 - F3 — Per-year concentration: >70% of cumulative OOS return concentrated
   in a single calendar year.
 - F4 — Per-month concentration: >25% of cumulative OOS return concentrated
   in a single rebalance month.
 - F5 — Benchmark Calmar: strategy fails the v1.1 ≥60% benchmark-Calmar pass
   rate.
-- F6 — Randomized comparator (v1.1 legacy p75): strategy fails the v1.1
-  randomized-timing pass rate.
+- F6 — Randomized comparator (v1.1, as currently implemented): strategy
+  fails the v1.1 randomized-timing pass rate. (v1.1 uses its legacy
+  comparator; p75 is not promoted to p95 — see §15 and §16.)
 - F7 — v1.2 exposure edge: `EXPOSURE_EDGE_FAIL` on a majority of rows that
-  carry sufficient v1.2 metric data. (Diagnostic — does not by itself trigger
-  V1_1_NO_GO, but is required to be reported.)
+  carry sufficient v1.2 metric data. (Diagnostic — does not by itself
+  trigger a `NO-GO`, but is required to be reported.)
 - F8 — v1.2 randomized-selection p95: strategy fails the rotation-specific
   p95 comparator on a majority of rows that carry sufficient data.
   (Diagnostic only, same caveat as F7.)
 - F9 — Post-hoc ticker selection: any evidence in the run log that the
   universe was reduced based on observed results.
-- F10 — Post-hoc parameter change: any weight, threshold, N, or cadence
-  changed between the spec and the executed run without a new RDR.
+- F10 — Post-hoc parameter change: any weight, threshold, N, cadence, or
+  concentration cap changed between the spec and the executed run without
+  a new RDR.
 
-F1–F6 are v1.1 verdict drivers. F7–F8 are v1.2 diagnostics that must be
-reported but never override v1.1. F9–F10 are protocol violations that
-invalidate the run entirely and require a fresh RDR.
+F1–F6 are core v1.1 verdict drivers (producing a `NO-GO` core verdict).
+F7–F8 are v1.2 diagnostics that must be reported but never override the
+core v1.1 verdict. F9–F10 are protocol violations that invalidate the run
+entirely and require a fresh RDR.
 
 ---
 
