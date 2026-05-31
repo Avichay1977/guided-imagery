@@ -86,3 +86,9 @@ def test_says_auto_adjust_false(spec_text):
 
 def test_says_daily_ohlcv_only(spec_text):
     assert "Daily OHLCV only" in spec_text
+
+
+def test_split_spec_mentions_first_trading_day_on_or_after(spec_text):
+    lower = spec_text.lower()
+    assert "first available trading day on or after" in lower or \
+           "first trading day on or after" in lower

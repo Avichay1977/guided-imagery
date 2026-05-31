@@ -26,6 +26,16 @@ any ticker requires a new RDR.
   coverage failure by the data audit. The window is not extended past
   `2024-12-31` for this plan.
 
+### Trading-day boundary rule
+
+The required start `2015-01-01` is a US-market holiday. The audit accepts
+a CSV whose first bar is the **first available trading day on or after
+the required start date**, and whose last bar is the **last available
+trading day on or before the required end date**, within a small
+calendar slack (default 7 days). This is a deterministic boundary rule
+that handles holidays and long weekends. It is NOT a fill: no missing
+bar is invented, forward-filled, back-filled, or interpolated.
+
 ## Required columns
 
 Per-bar daily OHLCV CSV, exactly:

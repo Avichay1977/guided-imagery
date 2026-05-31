@@ -46,6 +46,29 @@ expanded, narrowed, or substituted for a research run.
   earlier years, or selecting a different end date) requires a new RDR
   before research.
 
+## Trading-day boundary rule
+
+The target start (`2015-01-01`) is a US-market holiday; the target end
+(`2024-12-31`) is itself a trading day, but adjacent target dates in
+other research windows might not be. To handle this deterministically
+**without** forward-filling, back-filling, or interpolating any bar:
+
+- A CSV is considered to cover the start when its first observed bar
+  is the **first available trading day on or after the required start
+  date**, within a small calendar slack (default 7 days).
+- A CSV is considered to cover the end when its last observed bar is the
+  **last available trading day on or before the required end date**,
+  within the same calendar slack.
+- The slack is a calendar bound, not a fill. No bar is added, removed,
+  forward-filled, back-filled, or interpolated by this rule.
+- A CSV whose first bar is 2015-01-02 satisfies a required start of
+  2015-01-01 because 2015-01-01 was a US-market holiday and 2015-01-02
+  was the first available trading day on or after the required start.
+
+The slack value is recorded in the audit diagnostics
+(`trading_day_slack_days`) so a reader can see exactly which boundary
+relaxation was applied.
+
 ## Walk-forward split structure (frozen)
 
 - `train_years = 3`

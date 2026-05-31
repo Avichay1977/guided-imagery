@@ -43,6 +43,15 @@ class RotationDataAuditConfig:
     require_all_tickers: bool = True
     data_source_label: str = "LOCAL_CSV_AUDIT_ONLY"
     auto_adjust_required: bool = False
+    # Trading-day boundary rule (deterministic, no external calendar).
+    # If required_start_date / required_end_date falls on a non-trading day
+    # (e.g., 2015-01-01 is a US-market holiday), the CSV is allowed to start
+    # on the first available trading day on or after the required start, and
+    # to end on the last available trading day on or before the required end,
+    # provided the gap does not exceed `trading_day_slack_days` calendar days.
+    # This is NOT a forward-fill / back-fill / interpolation. The audit still
+    # never invents or fills any bar; it only relaxes the boundary equality.
+    trading_day_slack_days: int = 7
 
 
 @dataclass
@@ -62,6 +71,13 @@ class RotationTickerDataAudit:
     coverage_ok: bool = False
     valid_for_research: bool = False
     failure_reasons: list = field(default_factory=list)
+    # Effective trading-day boundary actually observed in the CSV (string
+    # ISO dates). Populated when the CSV passed validation up to the
+    # coverage check. The "_effective" suffix marks that these are the
+    # first/last trading days observed in the data, not the required dates.
+    effective_first_trading_day: Optional[str] = None
+    effective_last_trading_day: Optional[str] = None
+    coverage_slack_days_used: int = 0
 
 
 @dataclass
@@ -222,24 +238,50 @@ def audit_ticker_csv(
             audit.has_negative_volume = True
             audit.failure_reasons.append("NEGATIVE_VOLUME")
 
-    # Coverage
+    # Coverage — trading-day boundary rule.
+    #
+    # The required dates are calendar dates, but markets close on holidays
+    # and weekends. The CSV is considered to cover the start when:
+    #   ts_min <= required_start_date + slack_days
+    # AND there is no observed bar BEFORE required_start_date that the CSV
+    # somehow skipped (i.e., ts_min is the first available trading day on
+    # or after required_start_date).
+    #
+    # Equivalent rule for the end: ts_max >= required_end_date - slack_days.
+    #
+    # This is a deterministic boundary relaxation for non-trading calendar
+    # dates. It is NOT a forward-fill / back-fill / interpolation: no bars
+    # are invented or modified. Only the equality check is widened so that
+    # a CSV whose first row is 2015-01-02 satisfies a required_start_date
+    # of 2015-01-01 (a US-market holiday).
     ts_min = timestamps.min()
     ts_max = timestamps.max()
     audit.start_date = str(ts_min.date())
     audit.end_date = str(ts_max.date())
+    audit.effective_first_trading_day = audit.start_date
+    audit.effective_last_trading_day = audit.end_date
 
     req_start = pd.Timestamp(cfg.start_date)
     req_end = pd.Timestamp(cfg.end_date)
-    coverage_start_ok = ts_min <= req_start
-    coverage_end_ok = ts_max >= req_end
+    slack_days = int(getattr(cfg, "trading_day_slack_days", 0))
+    slack = pd.Timedelta(days=slack_days)
+
+    coverage_start_ok = ts_min <= (req_start + slack)
+    coverage_end_ok = ts_max >= (req_end - slack)
     audit.coverage_ok = bool(coverage_start_ok and coverage_end_ok)
+    audit.coverage_slack_days_used = slack_days
+
     if not coverage_start_ok:
         audit.failure_reasons.append(
-            f"COVERAGE_MISS_START:first_bar={audit.start_date}<{cfg.start_date}_required"
+            f"COVERAGE_MISS_START:first_trading_day_observed={audit.start_date}"
+            f"_exceeds_required_start_date={cfg.start_date}"
+            f"_plus_{slack_days}_day_slack"
         )
     if not coverage_end_ok:
         audit.failure_reasons.append(
-            f"COVERAGE_MISS_END:last_bar={audit.end_date}<{cfg.end_date}_required"
+            f"COVERAGE_MISS_END:last_trading_day_observed={audit.end_date}"
+            f"_short_of_required_end_date={cfg.end_date}"
+            f"_minus_{slack_days}_day_slack"
         )
 
     audit.valid_for_research = (
@@ -307,6 +349,8 @@ def audit_frozen_universe_data(
         "market_data_fetched": False,
         "v1_1_verdict_impact": "NONE",
         "audit_mode": "LOCAL_CSV_ONLY",
+        "trading_day_slack_days": int(getattr(cfg, "trading_day_slack_days", 0)),
+        "boundary_rule": "first_trading_day_on_or_after_required_start_date",
     }
 
     return RotationUniverseDataAuditResult(

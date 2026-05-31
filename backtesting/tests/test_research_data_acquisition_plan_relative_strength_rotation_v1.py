@@ -92,3 +92,9 @@ def test_says_acquisition_execution_requires_separate_gate(plan_text):
 
 def test_says_data_provenance_must_be_recorded(plan_text):
     assert "provenance" in plan_text.lower()
+
+
+def test_acquisition_plan_mentions_first_trading_day_on_or_after(plan_text):
+    lower = plan_text.lower()
+    assert "first available trading day on or after" in lower or \
+           "first trading day on or after" in lower

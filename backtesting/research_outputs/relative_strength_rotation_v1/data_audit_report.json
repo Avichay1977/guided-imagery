@@ -4,24 +4,19 @@
   "diagnostics": {
     "audit_mode": "LOCAL_CSV_ONLY",
     "auto_adjust_required": false,
+    "boundary_rule": "first_trading_day_on_or_after_required_start_date",
     "data_source_label": "LOCAL_CSV_AUDIT_ONLY",
     "market_data_fetched": false,
     "research_run_authorized": false,
+    "trading_day_slack_days": 7,
     "v1_1_verdict_impact": "NONE"
   },
   "invalid_tickers": [
-    "AAPL",
-    "MSFT",
-    "NVDA",
     "AMD",
-    "META",
-    "AMZN",
-    "GOOGL",
     "TSLA",
     "NFLX",
     "AVGO",
     "CRM",
-    "ORCL",
     "INTC",
     "CSCO",
     "IBM"
@@ -41,11 +36,12 @@
   "research_ready": false,
   "ticker_results": {
     "AAPL": {
-      "coverage_ok": false,
+      "coverage_ok": true,
+      "coverage_slack_days_used": 7,
+      "effective_first_trading_day": "2015-01-02",
+      "effective_last_trading_day": "2024-12-31",
       "end_date": "2024-12-31",
-      "failure_reasons": [
-        "COVERAGE_MISS_START:first_bar=2015-01-02<2015-01-01_required"
-      ],
+      "failure_reasons": [],
       "found": true,
       "has_adjusted_close": true,
       "has_inf_ohlc": false,
@@ -57,10 +53,13 @@
       "row_count": 2516,
       "start_date": "2015-01-02",
       "ticker": "AAPL",
-      "valid_for_research": false
+      "valid_for_research": true
     },
     "AMD": {
       "coverage_ok": false,
+      "coverage_slack_days_used": 0,
+      "effective_first_trading_day": null,
+      "effective_last_trading_day": null,
       "end_date": null,
       "failure_reasons": [
         "TICKER_NOT_FOUND_LOCALLY"
@@ -79,11 +78,12 @@
       "valid_for_research": false
     },
     "AMZN": {
-      "coverage_ok": false,
+      "coverage_ok": true,
+      "coverage_slack_days_used": 7,
+      "effective_first_trading_day": "2015-01-02",
+      "effective_last_trading_day": "2024-12-31",
       "end_date": "2024-12-31",
-      "failure_reasons": [
-        "COVERAGE_MISS_START:first_bar=2015-01-02<2015-01-01_required"
-      ],
+      "failure_reasons": [],
       "found": true,
       "has_adjusted_close": true,
       "has_inf_ohlc": false,
@@ -95,10 +95,13 @@
       "row_count": 2516,
       "start_date": "2015-01-02",
       "ticker": "AMZN",
-      "valid_for_research": false
+      "valid_for_research": true
     },
     "AVGO": {
       "coverage_ok": false,
+      "coverage_slack_days_used": 0,
+      "effective_first_trading_day": null,
+      "effective_last_trading_day": null,
       "end_date": null,
       "failure_reasons": [
         "TICKER_NOT_FOUND_LOCALLY"
@@ -118,6 +121,9 @@
     },
     "CRM": {
       "coverage_ok": false,
+      "coverage_slack_days_used": 0,
+      "effective_first_trading_day": null,
+      "effective_last_trading_day": null,
       "end_date": null,
       "failure_reasons": [
         "TICKER_NOT_FOUND_LOCALLY"
@@ -137,6 +143,9 @@
     },
     "CSCO": {
       "coverage_ok": false,
+      "coverage_slack_days_used": 0,
+      "effective_first_trading_day": null,
+      "effective_last_trading_day": null,
       "end_date": null,
       "failure_reasons": [
         "TICKER_NOT_FOUND_LOCALLY"
@@ -155,11 +164,12 @@
       "valid_for_research": false
     },
     "GOOGL": {
-      "coverage_ok": false,
+      "coverage_ok": true,
+      "coverage_slack_days_used": 7,
+      "effective_first_trading_day": "2015-01-02",
+      "effective_last_trading_day": "2024-12-31",
       "end_date": "2024-12-31",
-      "failure_reasons": [
-        "COVERAGE_MISS_START:first_bar=2015-01-02<2015-01-01_required"
-      ],
+      "failure_reasons": [],
       "found": true,
       "has_adjusted_close": true,
       "has_inf_ohlc": false,
@@ -171,10 +181,13 @@
       "row_count": 2516,
       "start_date": "2015-01-02",
       "ticker": "GOOGL",
-      "valid_for_research": false
+      "valid_for_research": true
     },
     "IBM": {
       "coverage_ok": false,
+      "coverage_slack_days_used": 0,
+      "effective_first_trading_day": null,
+      "effective_last_trading_day": null,
       "end_date": null,
       "failure_reasons": [
         "TICKER_NOT_FOUND_LOCALLY"
@@ -194,6 +207,9 @@
     },
     "INTC": {
       "coverage_ok": false,
+      "coverage_slack_days_used": 0,
+      "effective_first_trading_day": null,
+      "effective_last_trading_day": null,
       "end_date": null,
       "failure_reasons": [
         "TICKER_NOT_FOUND_LOCALLY"
@@ -212,11 +228,12 @@
       "valid_for_research": false
     },
     "META": {
-      "coverage_ok": false,
+      "coverage_ok": true,
+      "coverage_slack_days_used": 7,
+      "effective_first_trading_day": "2015-01-02",
+      "effective_last_trading_day": "2024-12-31",
       "end_date": "2024-12-31",
-      "failure_reasons": [
-        "COVERAGE_MISS_START:first_bar=2015-01-02<2015-01-01_required"
-      ],
+      "failure_reasons": [],
       "found": true,
       "has_adjusted_close": true,
       "has_inf_ohlc": false,
@@ -228,14 +245,15 @@
       "row_count": 2516,
       "start_date": "2015-01-02",
       "ticker": "META",
-      "valid_for_research": false
+      "valid_for_research": true
     },
     "MSFT": {
-      "coverage_ok": false,
+      "coverage_ok": true,
+      "coverage_slack_days_used": 7,
+      "effective_first_trading_day": "2015-01-02",
+      "effective_last_trading_day": "2024-12-31",
       "end_date": "2024-12-31",
-      "failure_reasons": [
-        "COVERAGE_MISS_START:first_bar=2015-01-02<2015-01-01_required"
-      ],
+      "failure_reasons": [],
       "found": true,
       "has_adjusted_close": true,
       "has_inf_ohlc": false,
@@ -247,10 +265,13 @@
       "row_count": 2516,
       "start_date": "2015-01-02",
       "ticker": "MSFT",
-      "valid_for_research": false
+      "valid_for_research": true
     },
     "NFLX": {
       "coverage_ok": false,
+      "coverage_slack_days_used": 0,
+      "effective_first_trading_day": null,
+      "effective_last_trading_day": null,
       "end_date": null,
       "failure_reasons": [
         "TICKER_NOT_FOUND_LOCALLY"
@@ -269,11 +290,12 @@
       "valid_for_research": false
     },
     "NVDA": {
-      "coverage_ok": false,
+      "coverage_ok": true,
+      "coverage_slack_days_used": 7,
+      "effective_first_trading_day": "2015-01-02",
+      "effective_last_trading_day": "2024-12-31",
       "end_date": "2024-12-31",
-      "failure_reasons": [
-        "COVERAGE_MISS_START:first_bar=2015-01-02<2015-01-01_required"
-      ],
+      "failure_reasons": [],
       "found": true,
       "has_adjusted_close": true,
       "has_inf_ohlc": false,
@@ -285,14 +307,15 @@
       "row_count": 2516,
       "start_date": "2015-01-02",
       "ticker": "NVDA",
-      "valid_for_research": false
+      "valid_for_research": true
     },
     "ORCL": {
-      "coverage_ok": false,
+      "coverage_ok": true,
+      "coverage_slack_days_used": 7,
+      "effective_first_trading_day": "2015-01-02",
+      "effective_last_trading_day": "2024-12-31",
       "end_date": "2024-12-31",
-      "failure_reasons": [
-        "COVERAGE_MISS_START:first_bar=2015-01-02<2015-01-01_required"
-      ],
+      "failure_reasons": [],
       "found": true,
       "has_adjusted_close": true,
       "has_inf_ohlc": false,
@@ -304,10 +327,13 @@
       "row_count": 2516,
       "start_date": "2015-01-02",
       "ticker": "ORCL",
-      "valid_for_research": false
+      "valid_for_research": true
     },
     "TSLA": {
       "coverage_ok": false,
+      "coverage_slack_days_used": 0,
+      "effective_first_trading_day": null,
+      "effective_last_trading_day": null,
       "end_date": null,
       "failure_reasons": [
         "TICKER_NOT_FOUND_LOCALLY"
@@ -343,5 +369,13 @@
     "CSCO",
     "IBM"
   ],
-  "valid_tickers": []
+  "valid_tickers": [
+    "AAPL",
+    "MSFT",
+    "NVDA",
+    "META",
+    "AMZN",
+    "GOOGL",
+    "ORCL"
+  ]
 }

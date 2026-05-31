@@ -341,3 +341,78 @@ def test_data_audit_outputs_no_live_go():
 def test_data_audit_outputs_no_research_go():
     src = inspect.getsource(_audit_mod)
     assert "RESEARCH-GO" not in src
+
+
+# ---------------------------------------------------------------------------
+# Tests 29–36: trading-day boundary rule (holiday handling patch)
+# ---------------------------------------------------------------------------
+
+def test_coverage_accepts_first_trading_day_on_or_after_non_trading_start_date(tmp_path):
+    # Required start 2015-01-01 is a US-market holiday.
+    # CSV starts 2015-01-02 (the first available trading day after).
+    df = _good_csv_df(start="2015-01-02", end="2024-12-31")
+    path = _write_csv(tmp_path, "AAPL", df)
+    audit = audit_ticker_csv("AAPL", path)
+    assert audit.coverage_ok is True, (
+        f"audit should accept 2015-01-02 start when required is 2015-01-01; "
+        f"reasons: {audit.failure_reasons}"
+    )
+    assert audit.effective_first_trading_day == "2015-01-02"
+    assert audit.valid_for_research is True
+
+
+def test_coverage_rejects_start_after_first_available_trading_day(tmp_path):
+    # CSV starts much later (well beyond the 7-day slack)
+    df = _good_csv_df(start="2015-02-15", end="2024-12-31")
+    path = _write_csv(tmp_path, "AAPL", df)
+    audit = audit_ticker_csv("AAPL", path)
+    assert audit.coverage_ok is False
+    assert any("COVERAGE_MISS_START" in r for r in audit.failure_reasons)
+
+
+def test_coverage_accepts_last_trading_day_on_or_before_non_trading_end_date(tmp_path):
+    # Use a config whose required_end falls on a non-trading day so the
+    # CSV ends on the previous trading day. 2024-01-01 was a US-market
+    # holiday (Mon); the prior trading day was 2023-12-29 (Fri).
+    cfg = RotationDataAuditConfig(start_date="2015-01-02", end_date="2024-01-01")
+    df = _good_csv_df(start="2015-01-02", end="2023-12-29")
+    path = _write_csv(tmp_path, "AAPL", df)
+    audit = audit_ticker_csv("AAPL", path, cfg)
+    assert audit.coverage_ok is True, (
+        f"audit should accept 2023-12-29 end when required is 2024-01-01; "
+        f"reasons: {audit.failure_reasons}"
+    )
+    assert audit.effective_last_trading_day == "2023-12-29"
+
+
+def test_coverage_rejects_end_before_required_trading_boundary(tmp_path):
+    # CSV ends well before the required end, beyond the 7-day slack.
+    df = _good_csv_df(start="2015-01-02", end="2024-06-30")
+    path = _write_csv(tmp_path, "AAPL", df)
+    audit = audit_ticker_csv("AAPL", path)
+    assert audit.coverage_ok is False
+    assert any("COVERAGE_MISS_END" in r for r in audit.failure_reasons)
+
+
+def test_audit_still_research_ready_false_when_8_tickers_missing(tmp_path):
+    # Provide exactly the 7 located tickers, each with the realistic
+    # 2015-01-02 start. With the new rule they should all pass. But the
+    # 8 missing tickers must still force research_ready=False.
+    present = ["AAPL", "MSFT", "NVDA", "META", "AMZN", "GOOGL", "ORCL"]
+    for t in present:
+        _write_csv(tmp_path, t, _good_csv_df(start="2015-01-02", end="2024-12-31"))
+    result = audit_frozen_universe_data([tmp_path], _FROZEN_UNIVERSE)
+    assert result.research_ready is False
+    assert set(result.valid_tickers) == set(present)
+    assert set(result.missing_tickers) == set(_FROZEN_UNIVERSE) - set(present)
+
+
+def test_no_ffill_bfill_interpolation_still_required(tmp_path):
+    # The new boundary rule must NOT relax the no-fill guarantees on the
+    # interior of the CSV. A NaN inside the file still rejects.
+    df = _good_csv_df(start="2015-01-02", end="2024-12-31")
+    df.loc[100, "close"] = float("nan")
+    path = _write_csv(tmp_path, "AAPL", df)
+    audit = audit_ticker_csv("AAPL", path)
+    assert audit.has_nan_ohlc is True
+    assert audit.valid_for_research is False
