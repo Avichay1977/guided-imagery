@@ -33,10 +33,14 @@ from __future__ import annotations
 
 from typing import Optional
 
+import math
+
 from protocol_v1_2_exposure_fair import (
     REQUIRED_V1_2_OUTPUT_COLUMNS,
     V1_1_LABELS,
     build_v1_2_diagnostic_row,
+    classify_exposure_edge,
+    classify_timing_edge,
 )
 
 
@@ -190,6 +194,77 @@ def _derive_window(v1_1_row: dict) -> str:
     return ""
 
 
+def _finite(value) -> bool:
+    """True when value is a real, finite number."""
+    if value is None:
+        return False
+    try:
+        return math.isfinite(float(value))
+    except (TypeError, ValueError):
+        return False
+
+
+def apply_protocol_v1_2_reporting_logic(row: dict) -> dict:
+    """
+    Add rotation-specific diagnostic label fields to a v1.2 metric row.
+
+    Returns a NEW dict; the input is never mutated. Adds:
+      strategy_vs_b1_label       : "BEATS_BUY_HOLD" | "BELOW_BUY_HOLD"
+                                   | "INSUFFICIENT_DATA_B1"
+      strategy_vs_b2_label       : "BEATS_B2" | "BELOW_B2"
+                                   | "INSUFFICIENT_DATA_B2"
+      strategy_vs_random_p95_label : "BEATS_RANDOM_P95" | "BELOW_RANDOM_P95"
+                                    | "INSUFFICIENT_DATA_P95"
+      is_pass_v1_2               : bool — True only when all three are PASS.
+
+    Never emits research or live verdict tokens. Diagnostic only.
+    """
+    result = dict(row)
+
+    strat_tr = row.get("strategy_total_return")
+    strat_c  = row.get("strategy_calmar")
+    b1_tr    = row.get("buy_hold_total_return")
+    b1_c     = row.get("buy_hold_calmar")
+    b2_tr    = row.get("exposure_matched_bh_total_return")
+    b2_c     = row.get("exposure_matched_bh_calmar")
+    p95_tr   = row.get("randomized_timing_p95_total_return")
+    p95_c    = row.get("randomized_timing_p95_calmar")
+
+    # vs B1 (raw buy-and-hold)
+    if all(_finite(v) for v in (strat_tr, strat_c, b1_tr, b1_c)):
+        beats = float(strat_tr) > float(b1_tr) and float(strat_c) > float(b1_c)
+        result["strategy_vs_b1_label"] = "BEATS_BUY_HOLD" if beats else "BELOW_BUY_HOLD"
+    else:
+        result["strategy_vs_b1_label"] = "INSUFFICIENT_DATA_B1"
+
+    # vs B2 (exposure-matched equal-weight benchmark)
+    exp_label = classify_exposure_edge(strat_tr, strat_c, b2_tr, b2_c)
+    if exp_label == "EXPOSURE_EDGE_PASS":
+        result["strategy_vs_b2_label"] = "BEATS_B2"
+    elif exp_label == "EXPOSURE_EDGE_FAIL":
+        result["strategy_vs_b2_label"] = "BELOW_B2"
+    else:
+        result["strategy_vs_b2_label"] = "INSUFFICIENT_DATA_B2"
+
+    # vs randomized-selection p95
+    tim_label = classify_timing_edge(strat_tr, strat_c, p95_tr, p95_c)
+    if tim_label == "TIMING_EDGE_PASS":
+        result["strategy_vs_random_p95_label"] = "BEATS_RANDOM_P95"
+    elif tim_label == "TIMING_EDGE_FAIL":
+        result["strategy_vs_random_p95_label"] = "BELOW_RANDOM_P95"
+    else:
+        result["strategy_vs_random_p95_label"] = "INSUFFICIENT_DATA_P95"
+
+    # Overall pass: all three comparisons must be outperformance
+    result["is_pass_v1_2"] = (
+        result.get("strategy_vs_b1_label") == "BEATS_BUY_HOLD"
+        and result.get("strategy_vs_b2_label") == "BEATS_B2"
+        and result.get("strategy_vs_random_p95_label") == "BEATS_RANDOM_P95"
+    )
+
+    return result
+
+
 # Defensive: keep the V1_1_LABELS reference available for callers/tests.
 __all__ = [
     "DEFAULT_METRIC_MAPPING",
@@ -197,5 +272,6 @@ __all__ = [
     "normalize_v1_1_verdict",
     "build_v1_2_report_row",
     "add_v1_2_columns",
+    "apply_protocol_v1_2_reporting_logic",
     "V1_1_LABELS",
 ]
