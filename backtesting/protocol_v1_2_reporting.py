@@ -38,6 +38,7 @@ import math
 from protocol_v1_2_exposure_fair import (
     REQUIRED_V1_2_OUTPUT_COLUMNS,
     V1_1_LABELS,
+    PORTFOLIO_LABEL,
     build_v1_2_diagnostic_row,
     classify_exposure_edge,
     classify_timing_edge,
@@ -239,6 +240,7 @@ def apply_protocol_v1_2_reporting_logic(row: dict) -> dict:
 
     # vs B2 (exposure-matched equal-weight benchmark)
     exp_label = classify_exposure_edge(strat_tr, strat_c, b2_tr, b2_c)
+    result["exposure_edge_label"] = exp_label
     if exp_label == "EXPOSURE_EDGE_PASS":
         result["strategy_vs_b2_label"] = "BEATS_B2"
     elif exp_label == "EXPOSURE_EDGE_FAIL":
@@ -248,12 +250,16 @@ def apply_protocol_v1_2_reporting_logic(row: dict) -> dict:
 
     # vs randomized-selection p95
     tim_label = classify_timing_edge(strat_tr, strat_c, p95_tr, p95_c)
+    result["timing_edge_label"] = tim_label
     if tim_label == "TIMING_EDGE_PASS":
         result["strategy_vs_random_p95_label"] = "BEATS_RANDOM_P95"
     elif tim_label == "TIMING_EDGE_FAIL":
         result["strategy_vs_random_p95_label"] = "BELOW_RANDOM_P95"
     else:
         result["strategy_vs_random_p95_label"] = "INSUFFICIENT_DATA_P95"
+
+    # v1.2 diagnostic label — always PORTFOLIO_DIAGNOSTIC_ONLY (never a verdict)
+    result["v1_2_diagnostic_label"] = PORTFOLIO_LABEL
 
     # Overall pass: all three comparisons must be outperformance
     result["is_pass_v1_2"] = (
