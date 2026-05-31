@@ -1,0 +1,347 @@
+{
+  "all_required_tickers_present": false,
+  "all_required_tickers_valid": false,
+  "diagnostics": {
+    "audit_mode": "LOCAL_CSV_ONLY",
+    "auto_adjust_required": false,
+    "data_source_label": "LOCAL_CSV_AUDIT_ONLY",
+    "market_data_fetched": false,
+    "research_run_authorized": false,
+    "v1_1_verdict_impact": "NONE"
+  },
+  "invalid_tickers": [
+    "AAPL",
+    "MSFT",
+    "NVDA",
+    "AMD",
+    "META",
+    "AMZN",
+    "GOOGL",
+    "TSLA",
+    "NFLX",
+    "AVGO",
+    "CRM",
+    "ORCL",
+    "INTC",
+    "CSCO",
+    "IBM"
+  ],
+  "missing_tickers": [
+    "AMD",
+    "TSLA",
+    "NFLX",
+    "AVGO",
+    "CRM",
+    "INTC",
+    "CSCO",
+    "IBM"
+  ],
+  "required_end_date": "2024-12-31",
+  "required_start_date": "2015-01-01",
+  "research_ready": false,
+  "ticker_results": {
+    "AAPL": {
+      "coverage_ok": false,
+      "end_date": "2024-12-31",
+      "failure_reasons": [
+        "COVERAGE_MISS_START:first_bar=2015-01-02<2015-01-01_required"
+      ],
+      "found": true,
+      "has_adjusted_close": true,
+      "has_inf_ohlc": false,
+      "has_nan_ohlc": false,
+      "has_negative_volume": false,
+      "has_non_positive_ohlc": false,
+      "missing_required_columns": [],
+      "path": "data/AAPL_2015-01-01_2024-12-31.csv",
+      "row_count": 2516,
+      "start_date": "2015-01-02",
+      "ticker": "AAPL",
+      "valid_for_research": false
+    },
+    "AMD": {
+      "coverage_ok": false,
+      "end_date": null,
+      "failure_reasons": [
+        "TICKER_NOT_FOUND_LOCALLY"
+      ],
+      "found": false,
+      "has_adjusted_close": false,
+      "has_inf_ohlc": false,
+      "has_nan_ohlc": false,
+      "has_negative_volume": false,
+      "has_non_positive_ohlc": false,
+      "missing_required_columns": [],
+      "path": null,
+      "row_count": 0,
+      "start_date": null,
+      "ticker": "AMD",
+      "valid_for_research": false
+    },
+    "AMZN": {
+      "coverage_ok": false,
+      "end_date": "2024-12-31",
+      "failure_reasons": [
+        "COVERAGE_MISS_START:first_bar=2015-01-02<2015-01-01_required"
+      ],
+      "found": true,
+      "has_adjusted_close": true,
+      "has_inf_ohlc": false,
+      "has_nan_ohlc": false,
+      "has_negative_volume": false,
+      "has_non_positive_ohlc": false,
+      "missing_required_columns": [],
+      "path": "data/AMZN_2015-01-01_2024-12-31.csv",
+      "row_count": 2516,
+      "start_date": "2015-01-02",
+      "ticker": "AMZN",
+      "valid_for_research": false
+    },
+    "AVGO": {
+      "coverage_ok": false,
+      "end_date": null,
+      "failure_reasons": [
+        "TICKER_NOT_FOUND_LOCALLY"
+      ],
+      "found": false,
+      "has_adjusted_close": false,
+      "has_inf_ohlc": false,
+      "has_nan_ohlc": false,
+      "has_negative_volume": false,
+      "has_non_positive_ohlc": false,
+      "missing_required_columns": [],
+      "path": null,
+      "row_count": 0,
+      "start_date": null,
+      "ticker": "AVGO",
+      "valid_for_research": false
+    },
+    "CRM": {
+      "coverage_ok": false,
+      "end_date": null,
+      "failure_reasons": [
+        "TICKER_NOT_FOUND_LOCALLY"
+      ],
+      "found": false,
+      "has_adjusted_close": false,
+      "has_inf_ohlc": false,
+      "has_nan_ohlc": false,
+      "has_negative_volume": false,
+      "has_non_positive_ohlc": false,
+      "missing_required_columns": [],
+      "path": null,
+      "row_count": 0,
+      "start_date": null,
+      "ticker": "CRM",
+      "valid_for_research": false
+    },
+    "CSCO": {
+      "coverage_ok": false,
+      "end_date": null,
+      "failure_reasons": [
+        "TICKER_NOT_FOUND_LOCALLY"
+      ],
+      "found": false,
+      "has_adjusted_close": false,
+      "has_inf_ohlc": false,
+      "has_nan_ohlc": false,
+      "has_negative_volume": false,
+      "has_non_positive_ohlc": false,
+      "missing_required_columns": [],
+      "path": null,
+      "row_count": 0,
+      "start_date": null,
+      "ticker": "CSCO",
+      "valid_for_research": false
+    },
+    "GOOGL": {
+      "coverage_ok": false,
+      "end_date": "2024-12-31",
+      "failure_reasons": [
+        "COVERAGE_MISS_START:first_bar=2015-01-02<2015-01-01_required"
+      ],
+      "found": true,
+      "has_adjusted_close": true,
+      "has_inf_ohlc": false,
+      "has_nan_ohlc": false,
+      "has_negative_volume": false,
+      "has_non_positive_ohlc": false,
+      "missing_required_columns": [],
+      "path": "data/GOOGL_2015-01-01_2024-12-31.csv",
+      "row_count": 2516,
+      "start_date": "2015-01-02",
+      "ticker": "GOOGL",
+      "valid_for_research": false
+    },
+    "IBM": {
+      "coverage_ok": false,
+      "end_date": null,
+      "failure_reasons": [
+        "TICKER_NOT_FOUND_LOCALLY"
+      ],
+      "found": false,
+      "has_adjusted_close": false,
+      "has_inf_ohlc": false,
+      "has_nan_ohlc": false,
+      "has_negative_volume": false,
+      "has_non_positive_ohlc": false,
+      "missing_required_columns": [],
+      "path": null,
+      "row_count": 0,
+      "start_date": null,
+      "ticker": "IBM",
+      "valid_for_research": false
+    },
+    "INTC": {
+      "coverage_ok": false,
+      "end_date": null,
+      "failure_reasons": [
+        "TICKER_NOT_FOUND_LOCALLY"
+      ],
+      "found": false,
+      "has_adjusted_close": false,
+      "has_inf_ohlc": false,
+      "has_nan_ohlc": false,
+      "has_negative_volume": false,
+      "has_non_positive_ohlc": false,
+      "missing_required_columns": [],
+      "path": null,
+      "row_count": 0,
+      "start_date": null,
+      "ticker": "INTC",
+      "valid_for_research": false
+    },
+    "META": {
+      "coverage_ok": false,
+      "end_date": "2024-12-31",
+      "failure_reasons": [
+        "COVERAGE_MISS_START:first_bar=2015-01-02<2015-01-01_required"
+      ],
+      "found": true,
+      "has_adjusted_close": true,
+      "has_inf_ohlc": false,
+      "has_nan_ohlc": false,
+      "has_negative_volume": false,
+      "has_non_positive_ohlc": false,
+      "missing_required_columns": [],
+      "path": "data/META_2015-01-01_2024-12-31.csv",
+      "row_count": 2516,
+      "start_date": "2015-01-02",
+      "ticker": "META",
+      "valid_for_research": false
+    },
+    "MSFT": {
+      "coverage_ok": false,
+      "end_date": "2024-12-31",
+      "failure_reasons": [
+        "COVERAGE_MISS_START:first_bar=2015-01-02<2015-01-01_required"
+      ],
+      "found": true,
+      "has_adjusted_close": true,
+      "has_inf_ohlc": false,
+      "has_nan_ohlc": false,
+      "has_negative_volume": false,
+      "has_non_positive_ohlc": false,
+      "missing_required_columns": [],
+      "path": "data/MSFT_2015-01-01_2024-12-31.csv",
+      "row_count": 2516,
+      "start_date": "2015-01-02",
+      "ticker": "MSFT",
+      "valid_for_research": false
+    },
+    "NFLX": {
+      "coverage_ok": false,
+      "end_date": null,
+      "failure_reasons": [
+        "TICKER_NOT_FOUND_LOCALLY"
+      ],
+      "found": false,
+      "has_adjusted_close": false,
+      "has_inf_ohlc": false,
+      "has_nan_ohlc": false,
+      "has_negative_volume": false,
+      "has_non_positive_ohlc": false,
+      "missing_required_columns": [],
+      "path": null,
+      "row_count": 0,
+      "start_date": null,
+      "ticker": "NFLX",
+      "valid_for_research": false
+    },
+    "NVDA": {
+      "coverage_ok": false,
+      "end_date": "2024-12-31",
+      "failure_reasons": [
+        "COVERAGE_MISS_START:first_bar=2015-01-02<2015-01-01_required"
+      ],
+      "found": true,
+      "has_adjusted_close": true,
+      "has_inf_ohlc": false,
+      "has_nan_ohlc": false,
+      "has_negative_volume": false,
+      "has_non_positive_ohlc": false,
+      "missing_required_columns": [],
+      "path": "data/NVDA_2015-01-01_2024-12-31.csv",
+      "row_count": 2516,
+      "start_date": "2015-01-02",
+      "ticker": "NVDA",
+      "valid_for_research": false
+    },
+    "ORCL": {
+      "coverage_ok": false,
+      "end_date": "2024-12-31",
+      "failure_reasons": [
+        "COVERAGE_MISS_START:first_bar=2015-01-02<2015-01-01_required"
+      ],
+      "found": true,
+      "has_adjusted_close": true,
+      "has_inf_ohlc": false,
+      "has_nan_ohlc": false,
+      "has_negative_volume": false,
+      "has_non_positive_ohlc": false,
+      "missing_required_columns": [],
+      "path": "data/ORCL_2015-01-01_2024-12-31.csv",
+      "row_count": 2516,
+      "start_date": "2015-01-02",
+      "ticker": "ORCL",
+      "valid_for_research": false
+    },
+    "TSLA": {
+      "coverage_ok": false,
+      "end_date": null,
+      "failure_reasons": [
+        "TICKER_NOT_FOUND_LOCALLY"
+      ],
+      "found": false,
+      "has_adjusted_close": false,
+      "has_inf_ohlc": false,
+      "has_nan_ohlc": false,
+      "has_negative_volume": false,
+      "has_non_positive_ohlc": false,
+      "missing_required_columns": [],
+      "path": null,
+      "row_count": 0,
+      "start_date": null,
+      "ticker": "TSLA",
+      "valid_for_research": false
+    }
+  },
+  "universe": [
+    "AAPL",
+    "MSFT",
+    "NVDA",
+    "AMD",
+    "META",
+    "AMZN",
+    "GOOGL",
+    "TSLA",
+    "NFLX",
+    "AVGO",
+    "CRM",
+    "ORCL",
+    "INTC",
+    "CSCO",
+    "IBM"
+  ],
+  "valid_tickers": []
+}
