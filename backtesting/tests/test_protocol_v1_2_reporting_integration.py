@@ -10,6 +10,7 @@ import pandas as pd
 from protocol_v1_2_exposure_fair import REQUIRED_V1_2_OUTPUT_COLUMNS
 from protocol_v1_2_reporting import (
     add_v1_2_columns,
+    apply_protocol_v1_2_reporting_logic,
     build_v1_2_report_row,
     normalize_v1_1_verdict,
 )
@@ -286,3 +287,46 @@ def test_v1_2_reporting_is_deterministic():
     assert (out["failure_reasons"] == df["failure_reasons"].values).all()
     assert "v1_2_failure_reasons" in out.columns
     assert len(out) == 2
+
+
+# ---------------------------------------------------------------------------
+# Contract-shape regression: apply_protocol_v1_2_reporting_logic key set
+# Pins the exact added-keys contract so silent contract widening cannot pass.
+# ---------------------------------------------------------------------------
+
+_REQUIRED_ADDED_KEYS = frozenset({
+    "exposure_edge_label",
+    "timing_edge_label",
+    "v1_2_diagnostic_label",
+    "strategy_vs_b1_label",
+    "strategy_vs_b2_label",
+    "strategy_vs_random_p95_label",
+    "is_pass_v1_2",
+})
+
+
+def test_apply_protocol_v1_2_reporting_logic_keyset_fully_populated():
+    row = {
+        "strategy_total_return": 0.20, "strategy_calmar": 1.5,
+        "buy_hold_total_return": 0.10, "buy_hold_calmar": 0.6,
+        "exposure_matched_bh_total_return": 0.08, "exposure_matched_bh_calmar": 0.5,
+        "randomized_timing_p95_total_return": 0.05, "randomized_timing_p95_calmar": 0.3,
+    }
+    out = apply_protocol_v1_2_reporting_logic(row)
+    missing = _REQUIRED_ADDED_KEYS - set(out.keys())
+    assert not missing, f"missing required keys: {sorted(missing)}"
+    assert out["v1_2_diagnostic_label"] == "PORTFOLIO_DIAGNOSTIC_ONLY"
+    assert isinstance(out["is_pass_v1_2"], bool)
+
+
+def test_apply_protocol_v1_2_reporting_logic_keyset_empty_row():
+    out = apply_protocol_v1_2_reporting_logic({})
+    missing = _REQUIRED_ADDED_KEYS - set(out.keys())
+    assert not missing, f"missing required keys on empty row: {sorted(missing)}"
+    assert out["exposure_edge_label"] == "EXPOSURE_EDGE_INSUFFICIENT_DATA"
+    assert out["timing_edge_label"] == "TIMING_EDGE_INSUFFICIENT_DATA"
+    assert out["strategy_vs_b1_label"] == "INSUFFICIENT_DATA_B1"
+    assert out["strategy_vs_b2_label"] == "INSUFFICIENT_DATA_B2"
+    assert out["strategy_vs_random_p95_label"] == "INSUFFICIENT_DATA_P95"
+    assert out["v1_2_diagnostic_label"] == "PORTFOLIO_DIAGNOSTIC_ONLY"
+    assert out["is_pass_v1_2"] is False
