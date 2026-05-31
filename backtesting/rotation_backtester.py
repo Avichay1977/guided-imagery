@@ -1,31 +1,32 @@
 """
-RotationBacktester — dedicated multi-asset rotation engine scaffold.
+RotationBacktester — dedicated multi-asset rotation engine.
 
 For RelativeStrengthRotation_v1 (asset-selection / rotation family).
 
-SCAFFOLD ONLY. run() is intentionally NOT implemented — it raises so that no
-fabricated returns, equity curves, or verdicts can be produced before the real
-engine exists. The decision to build this dedicated engine is recorded in
-ROTATION_ENGINE_DECISION_RELATIVE_STRENGTH_ROTATION_V1.md
-(DECISION: DEDICATED_ROTATION_BACKTESTER_REQUIRED).
+Accepts precomputed feature matrices and return series.
+No market-data-fetch library imported. No runner imported.
+No verdict tokens emitted anywhere.
 
-What IS implemented here are the pure, deterministic, side-effect-free helper
-methods that the future run() will compose:
-
+What IS implemented here:
   - select_rebalance_dates   — calendar logic (first trading day per month)
-  - validate_universe_data    — structural validation of toy/real data dicts
-  - select_top_n_assets       — eligibility + hysteresis-capped selection (§11, §12)
-  - calculate_equal_weights   — 1/top_n sizing (§13)
-  - calculate_cash_weight     — unused-slot cash (§13)
+  - validate_universe_data   — structural validation of toy data dicts
+  - select_top_n_assets      — eligibility + hysteresis-capped selection (§11, §12)
+  - calculate_equal_weights  — 1/top_n sizing (§13)
+  - calculate_cash_weight    — unused-slot cash (§13)
+  - run()                    — portfolio path engine for precomputed toy inputs
 
-Hard invariants enforced by this scaffold (frozen by the spec):
+Hard invariants enforced here (frozen by the spec):
   - top_n = 3 hard cap; hysteresis NEVER produces more than top_n holdings
   - equal weight is 1/top_n, NOT 1/number_selected
   - unused slots remain cash (never redistributed)
   - no leverage, no shorting
   - NaN / inf / None / missing composite_rs disqualifies a ticker
   - no market-data-fetch library imported, no market-data access
-  - no research/live verdict tokens emitted anywhere
+  - no verdict tokens emitted anywhere
+
+Engine decision:
+  DEDICATED_ROTATION_BACKTESTER_REQUIRED
+  (recorded in ROTATION_ENGINE_DECISION_RELATIVE_STRENGTH_ROTATION_V1.md)
 """
 
 from __future__ import annotations
@@ -34,7 +35,10 @@ import math
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+import numpy as np
 import pandas as pd
+
+from rotation_benchmark_b2 import calculate_calmar
 
 
 # ---------------------------------------------------------------------------
@@ -52,18 +56,29 @@ class RotationBacktesterConfig:
     cash_return: float = 0.0
     allow_leverage: bool = False
     allow_shorting: bool = False
+    annualization_days: int = 252
 
 
 @dataclass
 class RotationBacktesterResult:
     """
-    Portfolio-level result container (scaffold).
+    Portfolio-level result container.
 
-    Populated by a future run() implementation. Defined here so the output
-    schema is fixed before execution code is written. No values are fabricated.
+    equity_curve     : pd.Series of portfolio value at the start of each day
+                       (before applying that day's returns); index = dates.
+    rebalance_events : list of dicts, one per rebalance date.
+    per_ticker_contribution_pct : {ticker: pct_of_initial_cash}.
+    exposure_pct     : average invested fraction as a percentage.
+    final_equity     : portfolio value after all returns applied.
+    strategy_total_return : (final_equity / initial_cash) - 1.
+    strategy_calmar  : annualized return / max drawdown (NaN when no drawdown).
+    v1_2_metric_sources : diagnostics dict.
+    weights_by_date  : DataFrame of drifted weights per date (tickers as columns).
+    cash_by_date     : Series of cash value (not weight) per date.
+    holdings_by_date : {date: [ticker, ...]} map of selected holdings.
     """
 
-    equity_curve: list[float] = field(default_factory=list)
+    equity_curve: Any = field(default_factory=list)
     rebalance_events: list[dict] = field(default_factory=list)
     per_ticker_contribution_pct: dict[str, float] = field(default_factory=dict)
     exposure_pct: Optional[float] = None
@@ -71,6 +86,24 @@ class RotationBacktesterResult:
     strategy_total_return: Optional[float] = None
     strategy_calmar: Optional[float] = None
     v1_2_metric_sources: dict[str, Any] = field(default_factory=dict)
+    weights_by_date: Optional[pd.DataFrame] = None
+    cash_by_date: Optional[pd.Series] = None
+    holdings_by_date: dict = field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
+# Required columns for feature_matrix input
+# ---------------------------------------------------------------------------
+
+_REQUIRED_FEATURE_COLS = frozenset({
+    "date",
+    "ticker",
+    "composite_rs",
+    "rank_percentile",
+    "trend_filter_ema200",
+    "volatility_filter_atr_pct",
+    "liquidity_filter_volume_avg_20",
+})
 
 
 # ---------------------------------------------------------------------------
@@ -94,15 +127,12 @@ def _is_finite_number(value: Any) -> bool:
 
 class RotationBacktester:
     """
-    Dedicated rotation engine scaffold.
+    Dedicated rotation engine.
 
-    run() is NOT implemented. The helper methods below are pure and
-    deterministic and may be unit-tested on toy data only.
+    run() accepts precomputed toy feature matrices and return series.
+    All helper methods are pure, deterministic, and may be unit-tested on
+    toy data only.
     """
-
-    NOT_IMPLEMENTED_MESSAGE = (
-        "RotationBacktester.run is not implemented yet; scaffold only."
-    )
 
     # eligibility filter columns required True for a ticker to participate
     _FILTER_FIELDS: tuple[str, ...] = (
@@ -280,11 +310,255 @@ class RotationBacktester:
         return cash if cash > 0.0 else 0.0
 
     # ------------------------------------------------------------------
-    # run() — intentionally not implemented
+    # run()
     # ------------------------------------------------------------------
 
-    def run(self, universe_data, strategy):
+    def run(self, universe_data, strategy=None) -> RotationBacktesterResult:
         """
-        Scaffold only. Raises NotImplementedError to prevent fabricated output.
+        Execute rotation backtest on precomputed feature matrix and return series.
+
+        universe_data must be a dict containing:
+          'feature_matrix'   : pd.DataFrame with columns date, ticker,
+                               composite_rs, rank_percentile,
+                               trend_filter_ema200, volatility_filter_atr_pct,
+                               liquidity_filter_volume_avg_20.
+          'returns_by_ticker': dict[str, pd.Series] of daily simple returns.
+
+        Rebalances on the first trading day of each calendar month (derived
+        from the union of all return-series dates). On each rebalance date the
+        feature_matrix rows for that date are used to select holdings via the
+        spec §12 hysteresis algorithm. Between rebalances no changes are made.
+
+        Equity curve: recorded at the start of each day (before applying that
+        day's returns). equity_curve.iloc[0] == initial_cash.
+
+        Returns a RotationBacktesterResult with diagnostics marking this as
+        a precomputed toy path — not research evidence.
         """
-        raise NotImplementedError(self.NOT_IMPLEMENTED_MESSAGE)
+        # -- Input validation ------------------------------------------
+        if not isinstance(universe_data, dict):
+            raise ValueError(
+                "universe_data must be a dict with 'feature_matrix' and "
+                "'returns_by_ticker' keys."
+            )
+        if "feature_matrix" not in universe_data:
+            raise ValueError(
+                "universe_data must contain 'feature_matrix' key. "
+                "Pass raw OHLCV data to a feature builder first."
+            )
+        if "returns_by_ticker" not in universe_data:
+            raise ValueError(
+                "universe_data must contain 'returns_by_ticker' key."
+            )
+
+        feature_matrix = universe_data["feature_matrix"]
+        returns_by_ticker = universe_data["returns_by_ticker"]
+
+        if not isinstance(feature_matrix, pd.DataFrame) or feature_matrix.empty:
+            raise ValueError("feature_matrix must be a non-empty DataFrame.")
+        if not isinstance(returns_by_ticker, dict) or not returns_by_ticker:
+            raise ValueError("returns_by_ticker must be a non-empty dict.")
+
+        missing_cols = _REQUIRED_FEATURE_COLS - set(feature_matrix.columns)
+        if missing_cols:
+            raise ValueError(
+                f"feature_matrix is missing required columns: {sorted(missing_cols)}"
+            )
+
+        cfg = self.config
+
+        # Normalise feature_matrix date column to Timestamp
+        fm = feature_matrix.copy()
+        fm["date"] = pd.to_datetime(fm["date"])
+
+        # Build sorted union of all trading dates from return series
+        all_dates_idx: pd.Index = pd.Index([], dtype="datetime64[ns]")
+        for ticker, series in returns_by_ticker.items():
+            if not isinstance(series, pd.Series):
+                raise ValueError(
+                    f"returns_by_ticker[{ticker!r}] must be a pd.Series."
+                )
+            all_dates_idx = all_dates_idx.union(series.index)
+        all_dates: list[pd.Timestamp] = sorted(
+            pd.Timestamp(d) for d in all_dates_idx
+        )
+
+        if not all_dates:
+            raise ValueError("No dates found in returns_by_ticker.")
+
+        # Rebalance dates: first trading day of each calendar month
+        rebalance_dates: set[pd.Timestamp] = set(
+            self.select_rebalance_dates(all_dates)
+        )
+
+        # -- Simulation state ------------------------------------------
+        holding_values: dict[str, float] = {}
+        cash_value: float = cfg.initial_cash
+        current_holdings: list[str] = []
+
+        # -- Output accumulators ---------------------------------------
+        equity_curve_vals: list[float] = []
+        date_index: list[pd.Timestamp] = []
+        weights_by_ts: list[tuple[pd.Timestamp, dict[str, float]]] = []
+        cash_records: list[float] = []
+        holdings_records: list[list[str]] = []
+        rebalance_events: list[dict] = []
+        ticker_pnl: dict[str, float] = {}
+
+        # -- Main simulation loop --------------------------------------
+        for date in all_dates:
+            ts = pd.Timestamp(date)
+
+            # 1. Equity at the START of this day (before any action)
+            equity = sum(holding_values.values()) + cash_value
+
+            # 2. Monthly rebalance
+            if ts in rebalance_dates:
+                date_mask = fm["date"] == ts
+                feature_rows = fm[date_mask].to_dict("records")
+                new_holdings = self.select_top_n_assets(
+                    feature_rows, current_holdings
+                )
+
+                prev_set = set(current_holdings)
+                new_set = set(new_holdings)
+                rebalance_events.append({
+                    "date": ts,
+                    "holdings_before": list(current_holdings),
+                    "holdings_after": list(new_holdings),
+                    "buys": sorted(new_set - prev_set),
+                    "sells": sorted(prev_set - new_set),
+                    "equity_at_rebalance": equity,
+                    "old_weights": {
+                        t: 1.0 / cfg.top_n for t in current_holdings
+                    },
+                    "new_weights": {
+                        t: 1.0 / cfg.top_n for t in new_holdings
+                    },
+                })
+
+                per_slot = equity / cfg.top_n
+                holding_values = {t: per_slot for t in new_holdings}
+                cash_value = equity * (cfg.top_n - len(new_holdings)) / cfg.top_n
+                current_holdings = list(new_holdings)
+
+            # 3. Record start-of-day equity
+            equity_curve_vals.append(equity)
+            date_index.append(ts)
+
+            # 4. Record drifted weights, cash, and holdings for this date
+            drifted: dict[str, float] = {}
+            if equity > 0:
+                for t in current_holdings:
+                    drifted[t] = holding_values.get(t, 0.0) / equity
+            weights_by_ts.append((ts, drifted))
+            cash_records.append(cash_value)
+            holdings_records.append(list(current_holdings))
+
+            # 5. Apply daily returns (no fill; missing or invalid return raises)
+            for t in current_holdings:
+                if t not in returns_by_ticker:
+                    raise ValueError(
+                        f"Ticker {t!r} is selected but not in returns_by_ticker."
+                    )
+                ret_series = returns_by_ticker[t]
+                if ts not in ret_series.index:
+                    raise ValueError(
+                        f"Return for {t!r} on {ts.date()} not found; "
+                        "cannot fill missing returns."
+                    )
+                ret_val = float(ret_series.loc[ts])
+                if math.isnan(ret_val) or math.isinf(ret_val):
+                    raise ValueError(
+                        f"Invalid return ({ret_val}) for {t!r} on {ts.date()}."
+                    )
+                pnl = holding_values[t] * ret_val
+                holding_values[t] = holding_values[t] * (1.0 + ret_val)
+                ticker_pnl[t] = ticker_pnl.get(t, 0.0) + pnl
+
+            # 6. Cash return
+            cash_value = cash_value * (1.0 + cfg.cash_return)
+
+        # -- Post-loop computations ------------------------------------
+        final_equity = sum(holding_values.values()) + cash_value
+        initial_cash = cfg.initial_cash
+
+        equity_series = pd.Series(
+            equity_curve_vals, index=pd.DatetimeIndex(date_index),
+            name="equity_curve",
+        )
+
+        strategy_total_return = (
+            (final_equity / initial_cash) - 1.0
+            if initial_cash != 0 else float("nan")
+        )
+
+        strategy_calmar = calculate_calmar(equity_series, cfg.annualization_days)
+
+        # Cash series
+        cash_series = pd.Series(
+            cash_records, index=pd.DatetimeIndex(date_index), name="cash"
+        )
+
+        # Weights DataFrame: tickers as columns, dates as index
+        all_held = sorted({t for _, dw in weights_by_ts for t in dw})
+        if all_held:
+            weights_matrix: dict[str, list[float]] = {t: [] for t in all_held}
+            w_dates: list[pd.Timestamp] = []
+            for ts_, dw in weights_by_ts:
+                w_dates.append(ts_)
+                for t in all_held:
+                    weights_matrix[t].append(dw.get(t, 0.0))
+            weights_df = pd.DataFrame(
+                weights_matrix, index=pd.DatetimeIndex(w_dates)
+            )
+            weights_df.index.name = "date"
+        else:
+            weights_df = pd.DataFrame(
+                index=pd.DatetimeIndex(date_index)
+            )
+            weights_df.index.name = "date"
+
+        # Holdings by date
+        holdings_by_date_out = {
+            ts_: list(h)
+            for ts_, h in zip(date_index, holdings_records)
+        }
+
+        # Per-ticker contribution to return (as % of initial_cash)
+        per_ticker_contribution_pct = {
+            t: (pnl / initial_cash) * 100.0
+            for t, pnl in ticker_pnl.items()
+        } if initial_cash != 0 else {}
+
+        # Exposure pct: fraction of days with at least one holding, as %
+        invested_days = sum(1 for h in holdings_records if len(h) > 0)
+        total_days = len(date_index)
+        exposure_pct = (
+            (invested_days / total_days) * 100.0 if total_days > 0 else 0.0
+        )
+
+        diagnostics: dict[str, Any] = {
+            "mode": "PRECOMPUTED_TOY_ROTATION_PATH",
+            "research_valid": False,
+            "market_data_used": False,
+            "strategy_lab_runner_used": False,
+            "live_go_emitted": False,
+            "research_go_emitted": False,
+            "v1_1_verdict_impact": "NONE",
+            "n_rebalance_dates": len(rebalance_dates),
+        }
+
+        return RotationBacktesterResult(
+            equity_curve=equity_series,
+            rebalance_events=rebalance_events,
+            per_ticker_contribution_pct=per_ticker_contribution_pct,
+            exposure_pct=exposure_pct,
+            final_equity=final_equity,
+            strategy_total_return=strategy_total_return,
+            strategy_calmar=strategy_calmar,
+            v1_2_metric_sources=diagnostics,
+            weights_by_date=weights_df,
+            cash_by_date=cash_series,
+            holdings_by_date=holdings_by_date_out,
+        )

@@ -78,20 +78,19 @@ def test_result_dataclass_exists_and_defaults_empty():
 # run() must remain scaffold-only
 # ---------------------------------------------------------------------------
 
-def test_run_raises_not_implemented():
+def test_run_raises_value_error_for_missing_feature_matrix():
+    # run() now implemented; a dict without 'feature_matrix' key raises ValueError
     e = _engine()
-    with pytest.raises(NotImplementedError) as excinfo:
+    with pytest.raises(ValueError) as excinfo:
         e.run({"AAPL": [1, 2, 3]}, strategy=object())
-    assert "scaffold only" in str(excinfo.value).lower()
+    assert "feature_matrix" in str(excinfo.value)
 
 
-def test_run_message_is_exact():
+def test_run_raises_value_error_for_empty_dict():
     e = _engine()
-    with pytest.raises(NotImplementedError) as excinfo:
+    with pytest.raises(ValueError) as excinfo:
         e.run({}, None)
-    assert str(excinfo.value) == (
-        "RotationBacktester.run is not implemented yet; scaffold only."
-    )
+    assert "feature_matrix" in str(excinfo.value)
 
 
 # ---------------------------------------------------------------------------
