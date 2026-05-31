@@ -365,6 +365,146 @@ class MomentumContinuationConfluence_v1(StrategyVariant):
 
 
 # ---------------------------------------------------------------------------
+# RelativeStrengthRotation_v1  (asset-selection / rotation — NOT entry-timing)
+# ---------------------------------------------------------------------------
+
+class RelativeStrengthRotation_v1(StrategyVariant):
+    """
+    Asset-selection / rotation strategy.  NOT entry-timing.
+
+    Selects top-N assets by a fixed composite relative-strength score on a
+    fixed monthly rebalance schedule within a fixed 15-ticker universe.
+
+    All thresholds frozen in RESEARCH_SPEC_RELATIVE_STRENGTH_ROTATION_V1.md
+    before any backtest is run.  No parameter may be changed after results.
+
+    Status: SCAFFOLD ONLY — no backtest integration, no live execution.
+    Requires a RotationBacktester (Step 3 per spec checklist); the existing
+    single-asset Backtester cannot host this strategy.
+    """
+
+    # ---- identity -----------------------------------------------------------
+    strategy_name = "RelativeStrengthRotation"
+    strategy_version = "v1"
+    STRATEGY_ID = "RelativeStrengthRotation_v1"
+    STRATEGY_FAMILY = "asset-selection / rotation"
+
+    strategy_description = (
+        "Asset-selection / rotation strategy. NOT entry-timing. "
+        "Selects top-N assets by composite relative-strength on monthly "
+        "rebalance from a fixed 15-ticker universe. Long-only, no leverage, "
+        "no shorting, no options. Status: SCAFFOLD ONLY — no live execution."
+    )
+
+    # ---- frozen universe (15 tickers, spec §5) ------------------------------
+    UNIVERSE: list[str] = [
+        "AAPL", "MSFT", "NVDA", "AMD", "META",
+        "AMZN", "GOOGL", "TSLA", "NFLX", "AVGO",
+        "CRM", "ORCL", "INTC", "CSCO", "IBM",
+    ]
+
+    # ---- frozen parameters (spec §10, §11, §12, §14) -----------------------
+    TOP_N: int = 3
+    REBALANCE_FREQUENCY: str = "monthly"
+    WEIGHT_RS_126D: float = 0.40
+    WEIGHT_RS_252D: float = 0.40
+    WEIGHT_BENCHMARK_RS: float = 0.20
+    HYSTERESIS_THRESHOLD: float = 0.50
+    VOLATILITY_ATR_PCT_MAX: float = 0.08
+    LIQUIDITY_VOLUME_AVG_20_MIN: int = 1_000_000
+
+    # ---- required scoring fields (must all be finite for calculate_score) ---
+    _SCORING_FIELDS: tuple[str, ...] = (
+        "relative_strength_126d",
+        "relative_strength_252d",
+        "benchmark_relative_strength",
+    )
+
+    @property
+    def required_features(self) -> list[str]:
+        return [
+            "relative_strength_63d",
+            "relative_strength_126d",
+            "relative_strength_252d",
+            "benchmark_relative_strength",
+            "rank_percentile",
+            "trend_filter_ema200",
+            "volatility_filter_atr_pct",
+            "liquidity_filter_volume_avg_20",
+        ]
+
+    def prepare_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        return df
+
+    def generate_signal(self, df: pd.DataFrame) -> pd.Series:
+        raise NotImplementedError(
+            "RelativeStrengthRotation_v1 is an asset-selection / rotation "
+            "strategy and cannot be driven by the single-asset Backtester. "
+            "A RotationBacktester is required (spec checklist Step 3). "
+            "Do not call generate_signal() directly."
+        )
+
+    def calculate_score(self, row) -> float | None:
+        """
+        Return composite relative-strength score for one ticker at one bar.
+
+        composite_rs = 0.40 * RS_126d + 0.40 * RS_252d + 0.20 * benchmark_RS
+
+        row may be a dict, a namedtuple, or any object with attribute/key access.
+        Returns None when any required field is NaN, ±inf, None, or absent.
+        """
+        values: dict[str, float] = {}
+        for field in self._SCORING_FIELDS:
+            # Support both dict and namedtuple / attribute-bearing objects
+            if isinstance(row, dict):
+                val = row.get(field)
+            else:
+                val = getattr(row, field, None)
+            if val is None:
+                return None
+            try:
+                fval = float(val)
+            except (TypeError, ValueError):
+                return None
+            import math
+            if math.isnan(fval) or math.isinf(fval):
+                return None
+            values[field] = fval
+
+        return (
+            self.WEIGHT_RS_126D    * values["relative_strength_126d"]
+            + self.WEIGHT_RS_252D  * values["relative_strength_252d"]
+            + self.WEIGHT_BENCHMARK_RS * values["benchmark_relative_strength"]
+        )
+
+    def describe(self) -> dict:
+        return {
+            "strategy_id": self.STRATEGY_ID,
+            "strategy_name": self.strategy_name,
+            "strategy_version": self.strategy_version,
+            "family": self.STRATEGY_FAMILY,
+            "universe_size": len(self.UNIVERSE),
+            "universe": list(self.UNIVERSE),
+            "top_n": self.TOP_N,
+            "rebalance_frequency": self.REBALANCE_FREQUENCY,
+            "weights": {
+                "relative_strength_126d": self.WEIGHT_RS_126D,
+                "relative_strength_252d": self.WEIGHT_RS_252D,
+                "benchmark_relative_strength": self.WEIGHT_BENCHMARK_RS,
+            },
+            "hysteresis_threshold": self.HYSTERESIS_THRESHOLD,
+            "volatility_atr_pct_max": self.VOLATILITY_ATR_PCT_MAX,
+            "liquidity_volume_avg_20_min": self.LIQUIDITY_VOLUME_AVG_20_MIN,
+            "leverage": False,
+            "long_only": True,
+            "shorting": False,
+            "options": False,
+            "live_execution": False,
+            "status": "SCAFFOLD_ONLY",
+        }
+
+
+# ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
 
@@ -372,6 +512,7 @@ REGISTRY: dict[str, type[StrategyVariant]] = {
     "BreakoutVolumeConfluence_v1": BreakoutVolumeConfluence_v1,
     "TrendPullbackConfluence_v1": TrendPullbackConfluence_v1,
     "MomentumContinuationConfluence_v1": MomentumContinuationConfluence_v1,
+    "RelativeStrengthRotation_v1": RelativeStrengthRotation_v1,
 }
 
 
