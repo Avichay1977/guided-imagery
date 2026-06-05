@@ -78,27 +78,23 @@ Legend: ✅ DONE | 🔄 CURRENT | ⏭ NEXT | 🔒 BLOCKED UNTIL LATER
 - **Source:** dtwParallel (2015-2018) + brownbear (2019-2024); TSLA ÷3 / AVGO ÷10 harmonization for split consistency
 - **Note:** Yahoo Finance was blocked in this environment; provenance ledger records sources and split factors
 
+### Research Gate 5 — Research orchestrator wiring
+- **Artifact:** `rotation_research_orchestrator.py`, `tests/test_rotation_research_orchestrator.py` (commit 2432791)
+- **Proof:** 39 tests pass; 902 total tests pass, exit 0; all diagnostics `research_authorized=False`; no LIVE-GO/RESEARCH-GO tokens
+
 ---
 
 ## 🔄 CURRENT
 
-**All infrastructure complete. Data audit: `research_ready = True`.**
+**All infrastructure complete. Data audit: `research_ready = True`. Orchestrator wired and tested.**
 
-Awaiting Research Gate 5 payload from A1_ORCHESTRATOR_GATEKEEPER.
+Awaiting Research Gate 6 authorization (RDR-002 + A0 + A1 written sign-off).
 
 ---
 
 ## ⏭ NEXT
 
-### Research Gate 5 — Research orchestrator wiring
-- **Owner:** A2_LOCAL_IMPLEMENTER_CLAUDE_CODE
-- **Task:** Build `rotation_research_orchestrator.py` that chains:
-  `data → features → RotationBacktester → B1/B2/p95 → v1.2 adapter → CSV report`
-- **Scope:** Walk-forward over 7 splits (WF-01 to WF-07), real CSVs from `data/`
-- **Forbidden:** RESEARCH-GO output, LIVE-GO output, parameter changes, yfinance calls
-- **Required proof:** pytest -q, exit 0; orchestrator runs without error on toy inputs first
-
-### Research Gate 6 — Actual research run (ONE RUN)
+### Research Gate 6 — RDR-002 + actual research run (ONE RUN)
 - **Owner:** A0_OWNER_AVI + A1_ORCHESTRATOR_GATEKEEPER (explicit written authorization required)
 - **Requires:** RDR-002 drafted and accepted BEFORE execution
 - **Forbidden:** Running before RDR-002 exists; any parameter optimization; post-result selection
@@ -121,5 +117,5 @@ Awaiting Research Gate 5 payload from A1_ORCHESTRATOR_GATEKEEPER.
 
 ---
 
-*Last updated: Research Gate 4 PASSED — data_audit research_ready=True*
+*Last updated: Research Gate 5 PASSED — orchestrator wired, 902 tests pass*
 *This board is the single source of truth for pipeline status.*
