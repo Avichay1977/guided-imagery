@@ -28,3 +28,8 @@ Thumbs.db
 # Windows scripts
 *.bat
 *.vbs
+
+# Spectrum Rights app
+spectrum-rights/node_modules/
+spectrum-rights/dist/
+spectrum-rights/tsconfig.tsbuildinfo
