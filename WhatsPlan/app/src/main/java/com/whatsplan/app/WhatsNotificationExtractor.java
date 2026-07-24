@@ -25,11 +25,28 @@ public final class WhatsNotificationExtractor {
         String sender = "";
         Parcelable[] bundles = extras.getParcelableArray(Notification.EXTRA_MESSAGES);
         if (bundles != null && bundles.length > 0) {
-            String[] lastMessage = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
-                    ? readWithPlatform(bundles) : readFromBundles(bundles);
-            if (lastMessage != null) {
-                text = lastMessage[0];
-                sender = lastMessage[1];
+            // The platform reader for the message array only exists from API 30,
+            // and Person only from API 28, so older devices read the documented
+            // MessagingStyle bundle keys instead of losing the sender entirely.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                List<Notification.MessagingStyle.Message> messages =
+                        Notification.MessagingStyle.Message.getMessagesFromBundleArray(bundles);
+                if (!messages.isEmpty()) {
+                    Notification.MessagingStyle.Message last = messages.get(messages.size() - 1);
+                    text = string(last.getText());
+                    Person person = last.getSenderPerson();
+                    sender = person == null ? string(last.getSender()) : string(person.getName());
+                }
+            } else {
+                Bundle last = lastMessageBundle(bundles);
+                if (last != null) {
+                    text = string(last.getCharSequence("text"));
+                    sender = string(last.getCharSequence("sender"));
+                    if (sender.isEmpty() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        Person person = last.getParcelable("sender_person");
+                        if (person != null) sender = string(person.getName());
+                    }
+                }
             }
         }
 
@@ -46,27 +63,9 @@ public final class WhatsNotificationExtractor {
         return new NotificationEnvelope(identity, text);
     }
 
-    private String[] readWithPlatform(Parcelable[] bundles) {
-        List<Notification.MessagingStyle.Message> messages =
-                Notification.MessagingStyle.Message.getMessagesFromBundleArray(bundles);
-        if (messages.isEmpty()) return null;
-        Notification.MessagingStyle.Message last = messages.get(messages.size() - 1);
-        Person person = last.getSenderPerson();
-        return new String[]{
-                string(last.getText()),
-                person == null ? string(last.getSender()) : string(person.getName())};
-    }
-
-    /**
-     * Android 8.x has no public reader for the MessagingStyle bundle array, so
-     * the documented extras are read directly instead of losing the sender.
-     */
-    private String[] readFromBundles(Parcelable[] bundles) {
+    private Bundle lastMessageBundle(Parcelable[] bundles) {
         for (int i = bundles.length - 1; i >= 0; i--) {
-            if (!(bundles[i] instanceof Bundle)) continue;
-            Bundle message = (Bundle) bundles[i];
-            String sender = string(message.getCharSequence("sender"));
-            return new String[]{string(message.getCharSequence("text")), sender};
+            if (bundles[i] instanceof Bundle) return (Bundle) bundles[i];
         }
         return null;
     }

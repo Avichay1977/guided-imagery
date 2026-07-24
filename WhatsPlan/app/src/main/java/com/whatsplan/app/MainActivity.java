@@ -4,6 +4,7 @@ import android.Manifest;
 import android.app.*;
 import android.content.*;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.*;
 import android.provider.CalendarContract;
@@ -56,7 +57,7 @@ public final class MainActivity extends Activity {
         root.setPadding(dp(18), dp(18), dp(18), dp(18));
 
         TextView title = text("WhatsPlan", 30, Color.WHITE);
-        title.setTypeface(null, 1);
+        title.setTypeface(null, Typeface.BOLD);
         root.addView(title);
         root.addView(text("חזרות ופגישות מתוך WhatsApp — בשליטה שלך", 15,
                 Color.rgb(180, 184, 205)));
@@ -167,7 +168,7 @@ public final class MainActivity extends Activity {
         card.setPadding(dp(16), dp(16), dp(16), dp(16));
         card.setBackgroundColor(Color.rgb(31, 33, 46));
         TextView title = text(event.title, 19, Color.WHITE);
-        title.setTypeface(null, 1);
+        title.setTypeface(null, Typeface.BOLD);
         card.addView(title);
 
         String when = event.start == null ? "תאריך/שעה דורשים השלמה" :

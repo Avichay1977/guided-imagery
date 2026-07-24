@@ -2,6 +2,7 @@ name: WhatsPlan Android build
 
 on:
   push:
+    branches: [main]
     paths:
       - 'WhatsPlan/**'
       - '.github/workflows/whatsplan-android.yml'

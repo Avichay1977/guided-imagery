@@ -1,6 +1,7 @@
 package com.whatsplan.app;
 
 import java.time.ZonedDateTime;
+import java.util.Locale;
 import java.util.Objects;
 
 public final class EventCandidate {
@@ -31,7 +32,7 @@ public final class EventCandidate {
     }
 
     private static String normalize(String value) {
-        return Objects.toString(value, "").toLowerCase()
+        return Objects.toString(value, "").toLowerCase(Locale.ROOT)
                 .replaceAll("[^\\p{L}\\p{N}]+", " ").trim();
     }
 }
