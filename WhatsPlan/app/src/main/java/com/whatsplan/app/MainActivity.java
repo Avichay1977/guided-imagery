@@ -15,12 +15,17 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.zip.*;
 
 public final class MainActivity extends Activity {
     private static final int PICK_CHAT = 301;
     private static final int PURPLE = Color.rgb(108, 77, 255);
     private final WhatsAppParser parser = new WhatsAppParser();
+    // One worker keeps parsing and every SQLite access off the UI thread and
+    // serialised against each other.
+    private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private EventStore store;
     private LinearLayout cards;
     private TextView status;
@@ -37,6 +42,11 @@ public final class MainActivity extends Activity {
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         handleIntent(intent);
+    }
+
+    @Override protected void onDestroy() {
+        worker.shutdown();
+        super.onDestroy();
     }
 
     private void buildUi() {
@@ -99,39 +109,48 @@ public final class MainActivity extends Activity {
         if (uri != null) importUri(uri);
         else {
             String text = intent.getStringExtra(Intent.EXTRA_TEXT);
-            if (text != null) importText(text, "הודעה משותפת");
+            if (text != null) worker.execute(() -> importText(text, "הודעה משותפת"));
         }
     }
 
     private void importUri(Uri uri) {
         if (uri == null) return;
-        new Thread(() -> {
+        worker.execute(() -> {
             try {
                 String name = displayName(uri);
                 String content;
                 try (InputStream input = getContentResolver().openInputStream(uri)) {
-                    content = name.toLowerCase().endsWith(".zip")
+                    content = name.toLowerCase(Locale.ROOT).endsWith(".zip")
                             ? readTxtFromZip(input) : readAll(input);
                 }
-                final String finalName = name;
-                final String finalContent = content;
-                runOnUiThread(() -> importText(finalContent, finalName));
+                importText(content, name);
             } catch (Exception error) {
-                runOnUiThread(() -> status.setText("הייבוא נכשל: " + error.getMessage()));
+                String reason = error.getMessage();
+                runOnUiThread(() -> status.setText("הייבוא נכשל: " + reason));
             }
-        }).start();
+        });
     }
 
+    /** Runs on the worker: a multi-year export is far too slow for the UI thread. */
     private void importText(String content, String source) {
         List<EventCandidate> found = parser.parseExport(content, source);
         store.upsertAll(found);
-        status.setText("נמצאו " + found.size() + " אירועים לבדיקה");
-        refresh();
+        List<EventCandidate> pending = store.pending();
+        runOnUiThread(() -> {
+            status.setText("נמצאו " + found.size() + " אירועים לבדיקה");
+            render(pending);
+        });
     }
 
     private void refresh() {
+        worker.execute(() -> {
+            List<EventCandidate> pending = store.pending();
+            runOnUiThread(() -> render(pending));
+        });
+    }
+
+    private void render(List<EventCandidate> events) {
         cards.removeAllViews();
-        List<EventCandidate> events = store.pending();
         if (events.isEmpty()) {
             TextView empty = text("עדיין אין אירועים לבדיקה.\nייצא שיחת WhatsApp ללא מדיה ושתף אותה ל־WhatsPlan.",
                     17, Color.rgb(180, 184, 205));
@@ -170,18 +189,11 @@ public final class MainActivity extends Activity {
                 ? "סמן כטופל" : "פתח ביומן");
         calendar.setEnabled(event.start != null);
         calendar.setOnClickListener(v -> {
-            if (event.status == EventCandidate.Status.CANCELLED) {
-                store.markReviewed(event.id);
-                refresh();
-            } else {
-                openCalendar(event);
-            }
+            if (event.status == EventCandidate.Status.CANCELLED) markReviewed(event.id);
+            else openCalendar(event);
         });
         Button dismiss = button("התעלם");
-        dismiss.setOnClickListener(v -> {
-            store.markReviewed(event.id);
-            refresh();
-        });
+        dismiss.setOnClickListener(v -> markReviewed(event.id));
         buttons.addView(calendar, new LinearLayout.LayoutParams(0, dp(48), 1));
         LinearLayout.LayoutParams dismissParams = new LinearLayout.LayoutParams(0, dp(48), 1);
         dismissParams.setMarginStart(dp(8));
@@ -202,13 +214,21 @@ public final class MainActivity extends Activity {
                 .putExtra(CalendarContract.EXTRA_EVENT_END_TIME,
                         event.end.toInstant().toEpochMilli());
         startActivity(intent);
-        store.markReviewed(event.id);
+        markReviewed(event.id);
+    }
+
+    private void markReviewed(String id) {
+        worker.execute(() -> {
+            store.markReviewed(id);
+            List<EventCandidate> pending = store.pending();
+            runOnUiThread(() -> render(pending));
+        });
     }
 
     private void requestNotificationPermission() {
         if (Build.VERSION.SDK_INT >= 33 &&
                 checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
-                        != getPackageManager().PERMISSION_GRANTED) {
+                        != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 900);
         }
     }
@@ -217,7 +237,7 @@ public final class MainActivity extends Activity {
         try (ZipInputStream zip = new ZipInputStream(input, StandardCharsets.UTF_8)) {
             ZipEntry entry;
             while ((entry = zip.getNextEntry()) != null) {
-                if (!entry.isDirectory() && entry.getName().toLowerCase().endsWith(".txt")) {
+                if (!entry.isDirectory() && entry.getName().toLowerCase(Locale.ROOT).endsWith(".txt")) {
                     return readAll(zip);
                 }
             }
@@ -231,7 +251,8 @@ public final class MainActivity extends Activity {
         byte[] buffer = new byte[8192];
         int read;
         while ((read = input.read(buffer)) != -1) output.write(buffer, 0, read);
-        return output.toString(StandardCharsets.UTF_8);
+        // ByteArrayOutputStream#toString(Charset) needs API 33; minSdk here is 26.
+        return new String(output.toByteArray(), StandardCharsets.UTF_8);
     }
 
     private String displayName(Uri uri) {

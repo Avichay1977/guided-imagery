@@ -32,19 +32,19 @@ public final class ConversationIdentityResolver {
         int confidence = 45;
 
         // Android MessagingStyle's conversation title is the strongest signal.
-        if (!conversation.isBlank()) {
+        if (!blank(conversation)) {
             group = true;
             confidence = 98;
         } else {
             Matcher at = SENDER_AT_GROUP.matcher(title);
             Matcher parens = SENDER_IN_GROUP.matcher(title);
             if (at.matches()) {
-                if (sender.isBlank()) sender = clean(at.group(1));
+                if (blank(sender)) sender = clean(at.group(1));
                 conversation = clean(at.group(2));
                 group = true;
                 confidence = 88;
             } else if (parens.matches()) {
-                if (sender.isBlank()) sender = clean(parens.group(1));
+                if (blank(sender)) sender = clean(parens.group(1));
                 conversation = clean(parens.group(2));
                 group = true;
                 confidence = 82;
@@ -54,12 +54,12 @@ public final class ConversationIdentityResolver {
             }
         }
 
-        if (sender.isBlank() && !group) sender = title;
-        if (conversation.isBlank()) conversation = group ? title : sender;
-        if (conversation.isBlank()) conversation = "WhatsApp";
+        if (blank(sender) && !group) sender = title;
+        if (blank(conversation)) conversation = group ? title : sender;
+        if (blank(conversation)) conversation = "WhatsApp";
 
         String stableBasis;
-        if (!clean(shortcutId).isBlank()) {
+        if (!blank(clean(shortcutId))) {
             // Shortcut IDs are assigned per WhatsApp conversation and survive
             // notification text changes better than a visible title.
             stableBasis = packageName + "|shortcut|" + shortcutId;
@@ -72,6 +72,11 @@ public final class ConversationIdentityResolver {
 
         return new ConversationIdentity(
                 sha256(stableBasis), conversation, sender, group, confidence);
+    }
+
+    /** String#isBlank needs API 34; this app supports Android 8 and up. */
+    private boolean blank(String value) {
+        return value == null || value.trim().isEmpty();
     }
 
     private String clean(String value) {

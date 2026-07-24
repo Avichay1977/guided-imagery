@@ -56,10 +56,11 @@ public final class EventStore extends SQLiteOpenHelper {
                 null, null, null, "updated_at DESC", "40")) {
             while (cursor.moveToNext()) {
                 EventCandidate existing = fromCursor(cursor);
+                // Two unknown conversations are not the same conversation.
                 boolean sameConversation =
-                        Objects.equals(existing.conversationId, incoming.conversationId)
-                        || normalize(existing.conversationName)
-                        .equals(normalize(incoming.conversationName));
+                        sameValue(existing.conversationId, incoming.conversationId)
+                        || sameValue(normalize(existing.conversationName),
+                                normalize(incoming.conversationName));
                 boolean sameKind = eventKind(existing.title).equals(eventKind(incoming.title));
                 if (!sameConversation || !sameKind) continue;
 
@@ -140,6 +141,10 @@ public final class EventStore extends SQLiteOpenHelper {
     private String get(Cursor cursor, String name) {
         int index = cursor.getColumnIndexOrThrow(name);
         return cursor.isNull(index) ? null : cursor.getString(index);
+    }
+
+    private boolean sameValue(String left, String right) {
+        return left != null && !left.isEmpty() && left.equals(right);
     }
 
     private String normalize(String value) {

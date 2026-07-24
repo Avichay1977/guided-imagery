@@ -41,8 +41,16 @@ jobs:
         run: ./gradlew --no-daemon test
 
       - name: Lint
+        id: lint
         working-directory: WhatsPlan
         run: ./gradlew --no-daemon :app:lintDebug
+
+      - name: Print full lint report
+        if: failure() && steps.lint.outcome == 'failure'
+        working-directory: WhatsPlan
+        run: |
+          REPORT=$(find app/build -name 'lint-results-debug.txt' | head -1)
+          test -n "$REPORT" && cat "$REPORT"
 
       - name: Assemble debug APK
         working-directory: WhatsPlan

@@ -3,8 +3,6 @@ package com.whatsplan.app;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.*;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
 import java.time.temporal.TemporalAdjusters;
 import java.util.*;
 import java.util.regex.Matcher;
@@ -12,8 +10,13 @@ import java.util.regex.Pattern;
 
 public final class WhatsAppParser {
     private static final ZoneId ISRAEL = ZoneId.of("Asia/Jerusalem");
+    /**
+     * Covers the Android export ("12.07.2026, 10:15 - שם:"), the iOS export
+     * ("[12/07/2026, 10:15:03] שם:") and 12-hour exports ("7/12/26, 8:15 PM - Name:").
+     */
     private static final Pattern EXPORT_LINE = Pattern.compile(
-            "^(?:\\[)?(\\d{1,2})[./](\\d{1,2})[./](\\d{2,4}),?\\s+(\\d{1,2}):(\\d{2})(?:\\])?\\s*(?:-|–)?\\s*([^:]{1,80}):\\s*(.*)$");
+            "^[\\[\\s]*(\\d{1,2})[./-](\\d{1,2})[./-](\\d{2,4}),?\\s+(\\d{1,2}):(\\d{2})(?::\\d{2})?"
+                    + "\\s*([AaPp][Mm])?\\s*\\]?\\s*[-–—]?\\s*([^:]{1,80}):\\s*(.*)$");
     private static final Pattern CLOCK = Pattern.compile(
             "(?<!\\d)(?:ב(?:שעה)?[\\s-]*)?(\\d{1,2})(?::|\\.)(\\d{2})(?!\\d)|(?:ב(?:שעה)?[\\s-]+)(\\d{1,2})(?!\\d)");
     private static final Pattern NUMERIC_DATE = Pattern.compile(
@@ -47,21 +50,27 @@ public final class WhatsAppParser {
     };
 
     public List<EventCandidate> parseExport(String text, String sourceName) {
+        String[] lines = text.replace("\u200e", "").replace("\u200f", "")
+                .replace("\ufeff", "").split("\\R");
+        boolean dayFirst = detectDayFirst(lines);
+
         List<EventCandidate> raw = new ArrayList<>();
+        Set<String> senders = new LinkedHashSet<>();
         LocalDateTime currentStamp = null;
         String currentSender = "";
         StringBuilder message = new StringBuilder();
 
-        for (String line : text.replace("\u200e", "").split("\\R")) {
+        for (String line : lines) {
             Matcher matcher = EXPORT_LINE.matcher(line);
             if (matcher.matches()) {
                 if (currentStamp != null) {
                     analyzeMessage(raw, currentStamp, currentSender, message.toString(), sourceName);
                 }
-                currentStamp = parseStamp(matcher);
-                currentSender = matcher.group(6).trim();
+                currentStamp = parseStamp(matcher, dayFirst);
+                currentSender = matcher.group(7).trim();
+                senders.add(currentSender);
                 message.setLength(0);
-                message.append(matcher.group(7));
+                message.append(matcher.group(8));
             } else if (currentStamp != null) {
                 message.append('\n').append(line);
             }
@@ -69,6 +78,10 @@ public final class WhatsAppParser {
         if (currentStamp != null) {
             analyzeMessage(raw, currentStamp, currentSender, message.toString(), sourceName);
         }
+
+        // A one-to-one chat export never carries more than two participants.
+        boolean group = senders.size() > 2;
+        for (EventCandidate event : raw) event.groupConversation = group;
         return mergeConversation(raw);
     }
 
@@ -91,8 +104,9 @@ public final class WhatsAppParser {
         boolean eventLanguage = containsAny(normalized, EVENT_WORDS);
         boolean cancellation = containsAny(normalized, CANCEL_WORDS);
         boolean change = containsAny(normalized, CHANGE_WORDS);
-        LocalDate date = extractDate(normalized, messageStamp.toLocalDate());
-        LocalTime time = extractTime(normalized);
+        List<DateHit> dates = dateHits(normalized, messageStamp.toLocalDate());
+        LocalDate date = extractDate(normalized, messageStamp.toLocalDate(), dates);
+        LocalTime time = extractTime(maskDates(normalized, dates));
 
         if (!eventLanguage && !cancellation && !change) return;
         if (date == null && time == null && !cancellation) return;
@@ -101,7 +115,6 @@ public final class WhatsAppParser {
         event.source = source;
         event.conversationName = cleanSource(source);
         event.conversationId = stableId("export|" + cleanSource(source));
-        event.groupConversation = true;
         event.sender = sender;
         event.evidence = message.trim();
         event.title = inferTitle(normalized, source);
@@ -164,6 +177,8 @@ public final class WhatsAppParser {
             EventCandidate candidate = list.get(i);
             if (!Objects.equals(candidate.source, next.source)) continue;
             if (candidate.title.equals(next.title)) return candidate;
+            // A concert must never absorb a rehearsal just because they are close.
+            if (!kind(candidate.title).equals(kind(next.title))) continue;
             if (candidate.start != null && next.start != null &&
                     Math.abs(Duration.between(candidate.start, next.start).toDays()) <= 14) {
                 return candidate;
@@ -172,37 +187,85 @@ public final class WhatsAppParser {
         return null;
     }
 
-    private LocalDate extractDate(String text, LocalDate anchor) {
+    /**
+     * WhatsApp writes timestamps in the exporting phone's locale: day first in
+     * most of the world, month first on US devices. Decide from the file itself
+     * so an English-locale export does not land on the wrong month.
+     */
+    private boolean detectDayFirst(String[] lines) {
+        boolean monthFirstEvidence = false;
+        for (String line : lines) {
+            Matcher matcher = EXPORT_LINE.matcher(line);
+            if (!matcher.matches()) continue;
+            if (Integer.parseInt(matcher.group(1)) > 12) return true;
+            if (Integer.parseInt(matcher.group(2)) > 12) monthFirstEvidence = true;
+        }
+        return !monthFirstEvidence;
+    }
+
+    private LocalDate extractDate(String text, LocalDate anchor, List<DateHit> dates) {
         if (text.contains("מחרתיים")) return anchor.plusDays(2);
         if (text.contains("מחר")) return anchor.plusDays(1);
         if (text.contains("היום")) return anchor;
-
-        Matcher numeric = NUMERIC_DATE.matcher(text);
-        if (numeric.find()) {
-            int day = Integer.parseInt(numeric.group(1));
-            int month = Integer.parseInt(numeric.group(2));
-            int year = numeric.group(3) == null ? anchor.getYear() :
-                    normalizeYear(Integer.parseInt(numeric.group(3)));
-            try {
-                LocalDate result = LocalDate.of(year, month, day);
-                if (numeric.group(3) == null && result.isBefore(anchor.minusMonths(2))) {
-                    result = result.plusYears(1);
-                }
-                return result;
-            } catch (DateTimeException ignored) { }
-        }
+        if (!dates.isEmpty()) return dates.get(0).date;
 
         for (Map.Entry<String, DayOfWeek> entry : DAYS.entrySet()) {
             if (text.contains(entry.getKey())) {
                 LocalDate result = anchor.with(TemporalAdjusters.nextOrSame(entry.getValue()));
-                if (text.contains("שבוע הבא") || text.contains("בשבוע הבא")) {
-                    result = result.plusWeeks(1);
-                }
+                if (text.contains("שבוע הבא")) result = result.plusWeeks(1);
                 return result;
             }
         }
         if (text.contains("שבוע הבא")) return anchor.plusWeeks(1);
         return null;
+    }
+
+    /**
+     * Numeric groups that are really calendar dates. "19.30" is not a date and
+     * "בשעה 8.30" is a clock reading, so neither may hide the real time.
+     */
+    private List<DateHit> dateHits(String text, LocalDate anchor) {
+        List<DateHit> hits = new ArrayList<>();
+        Matcher numeric = NUMERIC_DATE.matcher(text);
+        while (numeric.find()) {
+            if (readsAsClockTime(text, numeric)) continue;
+            LocalDate date = toDate(numeric, anchor);
+            if (date != null) hits.add(new DateHit(numeric.start(), numeric.end(), date));
+        }
+        return hits;
+    }
+
+    private boolean readsAsClockTime(String text, Matcher numeric) {
+        if (numeric.group(3) != null) return false;
+        if (Integer.parseInt(numeric.group(1)) > 23) return false;
+        if (Integer.parseInt(numeric.group(2)) > 59) return false;
+        String before = text.substring(Math.max(0, numeric.start() - 8), numeric.start());
+        return before.contains("שעה");
+    }
+
+    private LocalDate toDate(Matcher numeric, LocalDate anchor) {
+        int day = Integer.parseInt(numeric.group(1));
+        int month = Integer.parseInt(numeric.group(2));
+        int year = numeric.group(3) == null ? anchor.getYear()
+                : normalizeYear(Integer.parseInt(numeric.group(3)));
+        try {
+            LocalDate result = LocalDate.of(year, month, day);
+            if (numeric.group(3) == null && result.isBefore(anchor.minusMonths(2))) {
+                result = result.plusYears(1);
+            }
+            return result;
+        } catch (DateTimeException notACalendarDate) {
+            return null;
+        }
+    }
+
+    private String maskDates(String text, List<DateHit> dates) {
+        if (dates.isEmpty()) return text;
+        StringBuilder masked = new StringBuilder(text);
+        for (DateHit hit : dates) {
+            for (int i = hit.start; i < hit.end; i++) masked.setCharAt(i, ' ');
+        }
+        return masked.toString();
     }
 
     private LocalTime extractTime(String text) {
@@ -237,11 +300,21 @@ public final class WhatsAppParser {
         return matcher.find() ? matcher.group(1).trim() : null;
     }
 
-    private LocalDateTime parseStamp(Matcher matcher) {
+    private LocalDateTime parseStamp(Matcher matcher, boolean dayFirst) {
+        int first = Integer.parseInt(matcher.group(1));
+        int second = Integer.parseInt(matcher.group(2));
         int year = normalizeYear(Integer.parseInt(matcher.group(3)));
-        return LocalDateTime.of(year, Integer.parseInt(matcher.group(2)),
-                Integer.parseInt(matcher.group(1)), Integer.parseInt(matcher.group(4)),
-                Integer.parseInt(matcher.group(5)));
+        int hour = applyMeridiem(Integer.parseInt(matcher.group(4)), matcher.group(6));
+        return LocalDateTime.of(year, dayFirst ? second : first, dayFirst ? first : second,
+                hour, Integer.parseInt(matcher.group(5)));
+    }
+
+    private int applyMeridiem(int hour, String meridiem) {
+        if (meridiem == null) return hour;
+        boolean afternoon = meridiem.charAt(0) == 'p' || meridiem.charAt(0) == 'P';
+        if (afternoon && hour < 12) return hour + 12;
+        if (!afternoon && hour == 12) return 0;
+        return hour;
     }
 
     private int normalizeYear(int year) {
@@ -253,8 +326,13 @@ public final class WhatsAppParser {
         return false;
     }
 
+    private String kind(String title) {
+        int separator = title.indexOf(' ');
+        return separator < 0 ? title : title.substring(0, separator);
+    }
+
     private String cleanSource(String source) {
-        if (source == null || source.isBlank()) return "WhatsApp";
+        if (source == null || source.trim().isEmpty()) return "WhatsApp";
         return source.replace("_chat", "").replace(".txt", "").replace("WhatsApp Chat with ", "").trim();
     }
 
@@ -263,10 +341,22 @@ public final class WhatsAppParser {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(value.getBytes(StandardCharsets.UTF_8));
             StringBuilder hex = new StringBuilder();
-            for (int i = 0; i < 12; i++) hex.append(String.format("%02x", digest[i]));
+            for (int i = 0; i < 12; i++) hex.append(String.format(Locale.ROOT, "%02x", digest[i]));
             return hex.toString();
         } catch (Exception impossible) {
             return Integer.toHexString(value.hashCode());
+        }
+    }
+
+    private static final class DateHit {
+        final int start;
+        final int end;
+        final LocalDate date;
+
+        DateHit(int start, int end, LocalDate date) {
+            this.start = start;
+            this.end = end;
+            this.date = date;
         }
     }
 }
