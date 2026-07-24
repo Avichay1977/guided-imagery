@@ -2,7 +2,7 @@ name: WhatsPlan Android build
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'claude/**']
     paths:
       - 'WhatsPlan/**'
       - '.github/workflows/whatsplan-android.yml'
@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: whatsplan-android-${{ github.ref }}
@@ -84,6 +84,23 @@ jobs:
             exit 1
           fi
           echo "OK: no INTERNET/calendar permissions"
+
+      - name: Publish the debug APK as a downloadable release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=whatsplan-debug
+          APK=WhatsPlan/app/build/outputs/apk/debug/app-debug.apk
+          SHA=$(sha256sum "$APK" | cut -d' ' -f1)
+          NOTES="Debug build of WhatsPlan, signed with the debug key.
+
+          SHA-256: $SHA
+          Commit: $GITHUB_SHA"
+          gh release create "$TAG" "$APK" \
+            --title "WhatsPlan debug APK" --notes "$NOTES" \
+          || gh release upload "$TAG" "$APK" --clobber
+          echo "Direct link: https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/app-debug.apk"
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
