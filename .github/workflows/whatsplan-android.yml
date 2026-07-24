@@ -1,0 +1,94 @@
+name: WhatsPlan Android build
+
+on:
+  push:
+    paths:
+      - 'WhatsPlan/**'
+      - '.github/workflows/whatsplan-android.yml'
+  pull_request:
+    paths:
+      - 'WhatsPlan/**'
+      - '.github/workflows/whatsplan-android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: whatsplan-android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests
+        working-directory: WhatsPlan
+        run: ./gradlew --no-daemon test
+
+      - name: Lint
+        working-directory: WhatsPlan
+        run: ./gradlew --no-daemon :app:lintDebug
+
+      - name: Assemble debug APK
+        working-directory: WhatsPlan
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Report APK path and SHA-256
+        working-directory: WhatsPlan
+        run: |
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -f "$APK"
+          SHA=$(sha256sum "$APK" | cut -d' ' -f1)
+          {
+            echo '### WhatsPlan debug APK'
+            echo
+            echo "- Path: \`WhatsPlan/$APK\`"
+            echo "- Size: $(stat -c%s "$APK") bytes"
+            echo "- SHA-256: \`$SHA\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "SHA-256: $SHA"
+
+      - name: Verify no INTERNET or calendar permissions in built manifest
+        working-directory: WhatsPlan
+        run: |
+          MERGED=app/build/intermediates/merged_manifests/debug/processDebugManifest/AndroidManifest.xml
+          test -f "$MERGED" || MERGED=$(find app/build/intermediates -name AndroidManifest.xml -path '*merged*' | head -1)
+          echo "Checking $MERGED"
+          if grep -qE 'android.permission.(INTERNET|READ_CALENDAR|WRITE_CALENDAR)' "$MERGED"; then
+            echo "Forbidden permission found in merged manifest" >&2
+            grep -nE 'uses-permission' "$MERGED" >&2
+            exit 1
+          fi
+          echo "OK: no INTERNET/calendar permissions"
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-apk
+          path: WhatsPlan/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Upload test and lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: whatsplan-reports
+          path: |
+            WhatsPlan/app/build/reports/tests/**
+            WhatsPlan/app/build/reports/lint-results-debug.*
+          if-no-files-found: warn
