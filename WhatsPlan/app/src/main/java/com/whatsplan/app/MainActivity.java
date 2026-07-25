@@ -37,6 +37,11 @@ public final class MainActivity extends Activity {
     private Button accessButton;
     private int shownState = EventStore.PENDING;
     private EventCandidate awaitingCalendar;
+    // One decision for many events: pick them all, then walk the calendar once.
+    private final Set<String> selected = new LinkedHashSet<>();
+    private final Deque<EventCandidate> calendarQueue = new ArrayDeque<>();
+    private boolean batchRunning;
+    private int batchDone;
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -130,9 +135,9 @@ public final class MainActivity extends Activity {
     private void paintTabs() {
         for (int i = 0; i < tabs.getChildCount(); i++) {
             Button tab = (Button) tabs.getChildAt(i);
-            boolean selected = Integer.valueOf(shownState).equals(tab.getTag());
-            tab.setBackgroundColor(selected ? PURPLE : Color.rgb(31, 33, 46));
-            tab.setTextColor(selected ? Color.WHITE : MUTED);
+            boolean active = Integer.valueOf(shownState).equals(tab.getTag());
+            tab.setBackgroundColor(active ? PURPLE : Color.rgb(31, 33, 46));
+            tab.setTextColor(active ? Color.WHITE : MUTED);
         }
     }
 
@@ -181,8 +186,24 @@ public final class MainActivity extends Activity {
         if (requestCode == PICK_CHAT && resultCode == RESULT_OK && data != null) {
             importUris(selectedUris(data));
         } else if (requestCode == OPEN_CALENDAR) {
-            confirmCalendarResult();
+            if (batchRunning) continueBatch();
+            else confirmCalendarResult();
         }
+    }
+
+    /**
+     * In a batch the events are marked as scheduled without asking each time —
+     * a dialog per event would defeat the point — and the summary says how to
+     * undo it.
+     */
+    private void continueBatch() {
+        EventCandidate event = awaitingCalendar;
+        awaitingCalendar = null;
+        if (event != null) {
+            batchDone++;
+            worker.execute(() -> store.setState(event.id, EventStore.SCHEDULED));
+        }
+        openNextInQueue();
     }
 
     /**
@@ -313,7 +334,99 @@ public final class MainActivity extends Activity {
             cards.addView(empty);
             return;
         }
+        if (shownState == EventStore.PENDING) cards.addView(batchBar(events));
         for (EventCandidate event : events) cards.addView(eventCard(event));
+    }
+
+    /**
+     * After importing a chat the list can hold dozens of candidates. Approving
+     * them one by one is the slow part, so the whole batch is decided here.
+     */
+    private View batchBar(List<EventCandidate> events) {
+        LinearLayout bar = column();
+        bar.setPadding(dp(4), dp(4), dp(4), dp(12));
+        bar.addView(text("נמצאו " + events.size() + " אירועים · נבחרו " + selected.size(),
+                14, MUTED));
+
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(0, dp(8), 0, 0);
+        boolean all = selected.size() == events.size() && !events.isEmpty();
+        Button toggleAll = button(all ? "נקה בחירה" : "בחר הכל");
+        toggleAll.setOnClickListener(v -> {
+            selected.clear();
+            if (!all) for (EventCandidate event : events) selected.add(event.id);
+            render(events);
+        });
+        Button open = button("פתח ביומן (" + selected.size() + ")");
+        open.setEnabled(!selected.isEmpty());
+        open.setOnClickListener(v -> startBatchCalendar(events));
+        addSideBySide(row, toggleAll, open);
+        bar.addView(row);
+
+        Button dismissAll = button("סמן הכל כלא רלוונטי (" + selected.size() + ")");
+        dismissAll.setEnabled(!selected.isEmpty());
+        dismissAll.setBackgroundColor(Color.rgb(64, 66, 86));
+        dismissAll.setOnClickListener(v -> dismissSelected());
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(46));
+        params.topMargin = dp(8);
+        bar.addView(dismissAll, params);
+        return bar;
+    }
+
+    private void dismissSelected() {
+        List<String> ids = new ArrayList<>(selected);
+        selected.clear();
+        worker.execute(() -> {
+            for (String id : ids) store.setState(id, EventStore.DISMISSED);
+            List<EventCandidate> events = store.byState(shownState);
+            runOnUiThread(() -> {
+                status.setText(ids.size() + " אירועים סומנו כלא רלוונטיים");
+                render(events);
+            });
+        });
+    }
+
+    /**
+     * The calendar form still opens per event, because WhatsPlan deliberately
+     * holds no calendar write permission. The choosing, though, happens once.
+     */
+    private void startBatchCalendar(List<EventCandidate> events) {
+        calendarQueue.clear();
+        int undated = 0;
+        for (EventCandidate event : events) {
+            if (!selected.contains(event.id)) continue;
+            if (event.start == null) undated++;
+            else calendarQueue.add(event);
+        }
+        if (calendarQueue.isEmpty()) {
+            status.setText("לאירועים שנבחרו חסר תאריך או שעה");
+            return;
+        }
+        batchRunning = true;
+        batchDone = 0;
+        int skipped = undated;
+        if (skipped > 0) status.setText(skipped + " אירועים ללא תאריך נותרו לבדיקה");
+        openNextInQueue();
+    }
+
+    private void openNextInQueue() {
+        EventCandidate next = calendarQueue.poll();
+        if (next == null) {
+            batchRunning = false;
+            selected.clear();
+            int done = batchDone;
+            worker.execute(() -> {
+                List<EventCandidate> events = store.byState(shownState);
+                runOnUiThread(() -> {
+                    status.setText(done + " אירועים סומנו כנקבעו · אפשר להחזיר לבדיקה מהלשונית");
+                    render(events);
+                });
+            });
+            return;
+        }
+        openCalendar(next);
     }
 
     private String emptyMessage() {
@@ -328,9 +441,24 @@ public final class MainActivity extends Activity {
         LinearLayout card = column();
         card.setPadding(dp(16), dp(16), dp(16), dp(16));
         card.setBackgroundColor(Color.rgb(31, 33, 46));
-        TextView title = text(event.title, 19, Color.WHITE);
-        title.setTypeface(null, Typeface.BOLD);
-        card.addView(title);
+        if (shownState == EventStore.PENDING) {
+            CheckBox pick = new CheckBox(this);
+            pick.setText(event.title);
+            pick.setTextSize(19);
+            pick.setTextColor(Color.WHITE);
+            pick.setTypeface(null, Typeface.BOLD);
+            pick.setChecked(selected.contains(event.id));
+            pick.setOnClickListener(v -> {
+                if (((CheckBox) v).isChecked()) selected.add(event.id);
+                else selected.remove(event.id);
+                refresh();
+            });
+            card.addView(pick);
+        } else {
+            TextView title = text(event.title, 19, Color.WHITE);
+            title.setTypeface(null, Typeface.BOLD);
+            card.addView(title);
+        }
 
         String when = event.start == null ? "תאריך/שעה דורשים השלמה" :
                 event.start.format(DateTimeFormatter.ofPattern("EEEE, d.M.yyyy · HH:mm",
