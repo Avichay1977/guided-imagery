@@ -8,6 +8,7 @@ import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.*;
 import android.provider.CalendarContract;
+import android.provider.DocumentsContract;
 import android.provider.Settings;
 import android.view.*;
 import android.widget.*;
@@ -157,19 +158,28 @@ public final class MainActivity extends Activity {
         return enabled != null && enabled.contains(getPackageName());
     }
 
+    /**
+     * WhatsApp exports one chat at a time, so importing a few of them should
+     * still be a single action. The picker also opens in Downloads, where the
+     * export lands, instead of the recent-files list.
+     */
     private void pickChat() {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         intent.setType("*/*");
         intent.putExtra(Intent.EXTRA_MIME_TYPES,
                 new String[]{"text/plain", "application/zip"});
+        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+        intent.putExtra(DocumentsContract.EXTRA_INITIAL_URI,
+                DocumentsContract.buildDocumentUri(
+                        "com.android.externalstorage.documents", "primary:Download"));
         startActivityForResult(intent, PICK_CHAT);
     }
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == PICK_CHAT && resultCode == RESULT_OK && data != null) {
-            importUri(data.getData());
+            importUris(selectedUris(data));
         } else if (requestCode == OPEN_CALENDAR) {
             confirmCalendarResult();
         }
@@ -203,25 +213,69 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private List<Uri> selectedUris(Intent data) {
+        List<Uri> uris = new ArrayList<>();
+        ClipData clip = data.getClipData();
+        if (clip != null) {
+            for (int i = 0; i < clip.getItemCount(); i++) uris.add(clip.getItemAt(i).getUri());
+        } else if (data.getData() != null) {
+            uris.add(data.getData());
+        }
+        return uris;
+    }
+
     private void importUri(Uri uri) {
         if (uri == null) return;
+        importUris(Collections.singletonList(uri));
+    }
+
+    private void importUris(List<Uri> uris) {
+        if (uris.isEmpty()) return;
         worker.execute(() -> {
-            try {
-                String name = displayName(uri);
-                String content;
-                try (InputStream input = getContentResolver().openInputStream(uri)) {
-                    content = name.toLowerCase(Locale.ROOT).endsWith(".zip")
-                            ? readTxtFromZip(input) : readAll(input);
+            int events = 0;
+            int chats = 0;
+            String failure = null;
+            for (Uri uri : uris) {
+                try {
+                    events += importOne(uri);
+                    chats++;
+                } catch (Exception error) {
+                    failure = error.getMessage();
                 }
-                importText(content, name);
-            } catch (Exception error) {
-                String reason = error.getMessage();
-                runOnUiThread(() -> status.setText("הייבוא נכשל: " + reason));
             }
+            int foundEvents = events;
+            int readChats = chats;
+            String reason = failure;
+            shownState = EventStore.PENDING;
+            List<EventCandidate> shown = store.byState(shownState);
+            runOnUiThread(() -> {
+                status.setText(importSummary(foundEvents, readChats, uris.size(), reason));
+                paintTabs();
+                render(shown);
+            });
         });
     }
 
     /** Runs on the worker: a multi-year export is far too slow for the UI thread. */
+    private int importOne(Uri uri) throws IOException {
+        String name = displayName(uri);
+        String content;
+        try (InputStream input = getContentResolver().openInputStream(uri)) {
+            content = name.toLowerCase(Locale.ROOT).endsWith(".zip")
+                    ? readTxtFromZip(input) : readAll(input);
+        }
+        List<EventCandidate> found = parser.parseExport(content, name);
+        store.upsertAll(found);
+        return found.size();
+    }
+
+    private String importSummary(int events, int chats, int requested, String failure) {
+        if (chats == 0) return "הייבוא נכשל: " + failure;
+        String summary = "נמצאו " + events + " אירועים מתוך " + chats
+                + (chats == 1 ? " שיחה" : " שיחות");
+        return requested > chats ? summary + " · " + (requested - chats) + " נכשלו" : summary;
+    }
+
     private void importText(String content, String source) {
         List<EventCandidate> found = parser.parseExport(content, source);
         store.upsertAll(found);
