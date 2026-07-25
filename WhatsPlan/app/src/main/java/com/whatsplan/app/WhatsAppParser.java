@@ -9,7 +9,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class WhatsAppParser {
-    private static final ZoneId ISRAEL = ZoneId.of("Asia/Jerusalem");
+    // Times are read in the phone's own zone, so a tour abroad does not shift
+    // every rehearsal by the offset difference.
+    private final ZoneId zone = ZoneId.systemDefault();
     /**
      * Covers the Android export ("12.07.2026, 10:15 - שם:"), the iOS export
      * ("[12/07/2026, 10:15:03] שם:") and 12-hour exports ("7/12/26, 8:15 PM - Name:").
@@ -35,19 +37,57 @@ public final class WhatsAppParser {
         DAYS.put("שבת", DayOfWeek.SATURDAY);
     }
 
-    private static final String[] EVENT_WORDS = {
-            "חזרה", "פגישה", "הופעה", "הקלטה", "מיקס", "מאסטרינג",
-            "סשן", "אולפן", "חזרות", "נפגשים", "קבענו", "סגרנו"
-    };
-    private static final String[] CONFIRM_WORDS = {
-            "סגרנו", "קבענו", "מאושר", "סופי", "יאללה", "נתראה", "תזכורת"
-    };
-    private static final String[] CANCEL_WORDS = {
-            "מבוטל", "מבוטלת", "ביטול", "לא מתקיים", "לא תתקיים"
-    };
-    private static final String[] CHANGE_WORDS = {
-            "נדחה", "נדחתה", "הוקדם", "הוקדמה", "במקום", "שינוי", "בסוף"
-    };
+    private static final Pattern[] EVENT_WORDS = words(
+            "חזרה", "חזרות", "פגישה", "פגישות", "הופעה", "הקלטה", "מיקס", "מאסטרינג",
+            "סשן", "אולפן", "נפגשים", "קבענו", "סגרנו",
+            "rehearsal", "meeting", "gig", "show", "session", "studio");
+    private static final Pattern[] CONFIRM_WORDS = words(
+            "סגרנו", "קבענו", "מאושר", "סופי", "יאללה", "נתראה", "תזכורת",
+            "confirmed", "booked");
+    private static final Pattern[] CANCEL_WORDS = words(
+            "מבוטל", "מבוטלת", "ביטול", "לא מתקיים", "לא תתקיים", "cancelled", "canceled");
+    private static final Pattern[] CHANGE_WORDS = words(
+            "נדחה", "נדחתה", "הוקדם", "הוקדמה", "במקום", "שינוי", "בסוף",
+            "moved", "postponed", "rescheduled");
+
+    /**
+     * Hebrew glues prefixes onto nouns, so a plain substring test turns
+     * "אני בחזרה מהחופש" into a rehearsal. These forms carry a different
+     * meaning and never signal an event.
+     */
+    private static final Set<String> FALSE_FRIENDS = new HashSet<>(Arrays.asList(
+            "בחזרה", "חזרה בתשובה"));
+
+    private static final Pattern WEEKLY_RECURRENCE = Pattern.compile(
+            "(?:כל|מדי)\\s+(?:יום\\s+)?(ראשון|שני|שלישי|רביעי|חמישי|שישי|שבת)"
+                    + "|(?:כל|מדי)\\s+שבוע|every\\s+week");
+    private static final Pattern MONTHLY_RECURRENCE = Pattern.compile(
+            "(?:כל|מדי)\\s+חודש|every\\s+month");
+
+    private static final Map<DayOfWeek, String> DAY_CODES = new EnumMap<>(DayOfWeek.class);
+    static {
+        DAY_CODES.put(DayOfWeek.SUNDAY, "SU");
+        DAY_CODES.put(DayOfWeek.MONDAY, "MO");
+        DAY_CODES.put(DayOfWeek.TUESDAY, "TU");
+        DAY_CODES.put(DayOfWeek.WEDNESDAY, "WE");
+        DAY_CODES.put(DayOfWeek.THURSDAY, "TH");
+        DAY_CODES.put(DayOfWeek.FRIDAY, "FR");
+        DAY_CODES.put(DayOfWeek.SATURDAY, "SA");
+    }
+
+    /**
+     * Matches each word on its own. Hebrew stacks prefixes onto the noun, so
+     * "וההופעה" and "מהחזרה" must still count while "בחזרה" is left to the
+     * false-friend list.
+     */
+    private static Pattern[] words(String... values) {
+        Pattern[] patterns = new Pattern[values.length];
+        for (int i = 0; i < values.length; i++) {
+            patterns[i] = Pattern.compile(
+                    "(?<!\\p{L})(?:[בהלמשוכ]{1,2}-?)?" + Pattern.quote(values[i]) + "(?!\\p{L})");
+        }
+        return patterns;
+    }
 
     public List<EventCandidate> parseExport(String text, String sourceName) {
         String[] lines = text.replace("\u200e", "").replace("\u200f", "")
@@ -88,7 +128,7 @@ public final class WhatsAppParser {
     public List<EventCandidate> parseNotification(
             ConversationIdentity identity, String message, ZonedDateTime receivedAt) {
         List<EventCandidate> result = new ArrayList<>();
-        analyzeMessage(result, receivedAt.withZoneSameInstant(ISRAEL).toLocalDateTime(),
+        analyzeMessage(result, receivedAt.withZoneSameInstant(zone).toLocalDateTime(),
                 identity.sender, message, identity.name);
         for (EventCandidate event : result) {
             event.conversationId = identity.id;
@@ -119,6 +159,7 @@ public final class WhatsAppParser {
         event.evidence = message.trim();
         event.title = inferTitle(normalized, source);
         event.location = extractLocation(message);
+        event.recurrence = recurrence(normalized, date);
         event.confidence = 42;
         if (date != null) event.confidence += 20;
         if (time != null) event.confidence += 20;
@@ -131,11 +172,12 @@ public final class WhatsAppParser {
             event.confidence = 90;
         }
         if (change) event.confidence += 4;
+        if (event.recurrence != null) event.confidence += 6;
         event.confidence = Math.min(99, event.confidence);
 
         if (date != null) {
             LocalTime resolvedTime = time == null ? LocalTime.of(9, 0) : time;
-            event.start = ZonedDateTime.of(date, resolvedTime, ISRAEL);
+            event.start = ZonedDateTime.of(date, resolvedTime, zone);
             event.end = event.start.plusHours(2);
         }
         event.id = stableId(source + "|" + sender + "|" + messageStamp + "|" + message);
@@ -286,13 +328,34 @@ public final class WhatsAppParser {
         return LocalTime.of(hour, minute);
     }
 
+    private static final Pattern[] REHEARSAL = words("חזרה", "חזרות", "rehearsal");
+    private static final Pattern[] CONCERT = words("הופעה", "gig", "show");
+    private static final Pattern[] RECORDING = words("הקלטה", "אולפן", "session", "studio");
+    private static final Pattern[] MIXING = words("מיקס");
+    private static final Pattern[] MASTERING = words("מאסטרינג");
+
     private String inferTitle(String text, String source) {
-        if (text.contains("חזרה")) return "חזרה – " + cleanSource(source);
-        if (text.contains("הופעה")) return "הופעה – " + cleanSource(source);
-        if (text.contains("הקלטה") || text.contains("אולפן")) return "הקלטה – " + cleanSource(source);
-        if (text.contains("מיקס")) return "מיקס – " + cleanSource(source);
-        if (text.contains("מאסטרינג")) return "מאסטרינג – " + cleanSource(source);
+        if (containsAny(text, REHEARSAL)) return "חזרה – " + cleanSource(source);
+        if (containsAny(text, CONCERT)) return "הופעה – " + cleanSource(source);
+        if (containsAny(text, RECORDING)) return "הקלטה – " + cleanSource(source);
+        if (containsAny(text, MIXING)) return "מיקס – " + cleanSource(source);
+        if (containsAny(text, MASTERING)) return "מאסטרינג – " + cleanSource(source);
         return "פגישה – " + cleanSource(source);
+    }
+
+    /**
+     * "חזרה כל יום שלישי" is one repeating rehearsal, not a new event every
+     * week. Returns an RRULE the calendar form understands.
+     */
+    private String recurrence(String text, LocalDate date) {
+        Matcher weekly = WEEKLY_RECURRENCE.matcher(text);
+        if (weekly.find()) {
+            DayOfWeek day = weekly.group(1) == null ? null : DAYS.get(weekly.group(1));
+            if (day == null && date != null) day = date.getDayOfWeek();
+            return day == null ? "FREQ=WEEKLY" : "FREQ=WEEKLY;BYDAY=" + DAY_CODES.get(day);
+        }
+        if (MONTHLY_RECURRENCE.matcher(text).find()) return "FREQ=MONTHLY";
+        return null;
     }
 
     private String extractLocation(String text) {
@@ -321,8 +384,13 @@ public final class WhatsAppParser {
         return year < 100 ? 2000 + year : year;
     }
 
-    private boolean containsAny(String value, String[] needles) {
-        for (String needle : needles) if (value.contains(needle)) return true;
+    private boolean containsAny(String value, Pattern[] patterns) {
+        for (Pattern pattern : patterns) {
+            Matcher matcher = pattern.matcher(value);
+            while (matcher.find()) {
+                if (!FALSE_FRIENDS.contains(matcher.group())) return true;
+            }
+        }
         return false;
     }
 

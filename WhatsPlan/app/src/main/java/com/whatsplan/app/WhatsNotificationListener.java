@@ -34,6 +34,11 @@ public final class WhatsNotificationListener extends NotificationListenerService
         });
     }
 
+    /** Android drops the binding after updates; without this it never returns. */
+    @Override public void onListenerDisconnected() {
+        requestRebind(new ComponentName(this, WhatsNotificationListener.class));
+    }
+
     @Override public void onDestroy() {
         worker.shutdown();
         super.onDestroy();

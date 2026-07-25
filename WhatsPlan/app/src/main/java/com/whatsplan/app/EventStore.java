@@ -11,8 +11,15 @@ import java.util.*;
 public final class EventStore extends SQLiteOpenHelper {
     private static final String DB = "whatsplan.db";
 
+    /** Waiting for the user to decide. */
+    public static final int PENDING = 0;
+    /** The user said it is not an event, or not relevant. */
+    public static final int DISMISSED = 1;
+    /** The user confirmed it went into the calendar. */
+    public static final int SCHEDULED = 2;
+
     public EventStore(Context context) {
-        super(context, DB, null, 2);
+        super(context, DB, null, 3);
     }
 
     @Override public void onCreate(SQLiteDatabase db) {
@@ -20,8 +27,8 @@ public final class EventStore extends SQLiteOpenHelper {
                 "id TEXT PRIMARY KEY, title TEXT NOT NULL, source TEXT, sender TEXT," +
                 "conversation_id TEXT, conversation_name TEXT, is_group INTEGER DEFAULT 0," +
                 "location TEXT, evidence TEXT, starts TEXT, ends TEXT," +
-                "confidence INTEGER, status TEXT, reviewed INTEGER DEFAULT 0," +
-                "updated_at INTEGER NOT NULL)");
+                "confidence INTEGER, status TEXT, recurrence TEXT," +
+                "reviewed INTEGER DEFAULT 0, updated_at INTEGER NOT NULL)");
     }
 
     @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
@@ -29,6 +36,9 @@ public final class EventStore extends SQLiteOpenHelper {
             db.execSQL("ALTER TABLE events ADD COLUMN conversation_id TEXT");
             db.execSQL("ALTER TABLE events ADD COLUMN conversation_name TEXT");
             db.execSQL("ALTER TABLE events ADD COLUMN is_group INTEGER DEFAULT 0");
+        }
+        if (oldVersion < 3) {
+            db.execSQL("ALTER TABLE events ADD COLUMN recurrence TEXT");
         }
     }
 
@@ -52,7 +62,7 @@ public final class EventStore extends SQLiteOpenHelper {
      * internal shortcut ID was unavailable in the export file.
      */
     private void mergeWithExistingConversationEvent(SQLiteDatabase db, EventCandidate incoming) {
-        try (Cursor cursor = db.query("events", null, "reviewed=0",
+        try (Cursor cursor = db.query("events", null, "reviewed IN (0,2)",
                 null, null, null, "updated_at DESC", "40")) {
             while (cursor.moveToNext()) {
                 EventCandidate existing = fromCursor(cursor);
@@ -79,23 +89,34 @@ public final class EventStore extends SQLiteOpenHelper {
                     incoming.evidence = existing.evidence + "\n↳ " + incoming.evidence;
                 }
                 incoming.confidence = Math.max(existing.confidence, incoming.confidence);
+                if (incoming.recurrence == null) incoming.recurrence = existing.recurrence;
+                // A cancellation or a new time must come back for review even if
+                // the user had already put the old version in the calendar.
+                boolean changed = incoming.status == EventCandidate.Status.CANCELLED
+                        || (incoming.start != null && !incoming.start.equals(existing.start));
+                incoming.state = changed ? PENDING : existing.state;
                 return;
             }
         }
     }
 
     public List<EventCandidate> pending() {
+        return byState(PENDING);
+    }
+
+    public List<EventCandidate> byState(int state) {
         List<EventCandidate> result = new ArrayList<>();
         try (Cursor cursor = getReadableDatabase().query("events", null,
-                "reviewed=0", null, null, null, "starts IS NULL, starts ASC")) {
+                "reviewed=?", new String[]{String.valueOf(state)},
+                null, null, "starts IS NULL, starts ASC")) {
             while (cursor.moveToNext()) result.add(fromCursor(cursor));
         }
         return result;
     }
 
-    public void markReviewed(String id) {
+    public void setState(String id, int state) {
         ContentValues values = new ContentValues();
-        values.put("reviewed", 1);
+        values.put("reviewed", state);
         getWritableDatabase().update("events", values, "id=?", new String[]{id});
     }
 
@@ -114,6 +135,8 @@ public final class EventStore extends SQLiteOpenHelper {
         values.put("ends", event.end == null ? null : event.end.toString());
         values.put("confidence", event.confidence);
         values.put("status", event.status.name());
+        values.put("recurrence", event.recurrence);
+        values.put("reviewed", event.state);
         values.put("updated_at", System.currentTimeMillis());
         return values;
     }
@@ -135,6 +158,8 @@ public final class EventStore extends SQLiteOpenHelper {
         event.end = ends == null ? null : ZonedDateTime.parse(ends);
         event.confidence = cursor.getInt(cursor.getColumnIndexOrThrow("confidence"));
         event.status = EventCandidate.Status.valueOf(get(cursor, "status"));
+        event.recurrence = get(cursor, "recurrence");
+        event.state = cursor.getInt(cursor.getColumnIndexOrThrow("reviewed"));
         return event;
     }
 

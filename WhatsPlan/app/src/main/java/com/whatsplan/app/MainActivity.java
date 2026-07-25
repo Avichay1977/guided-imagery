@@ -22,14 +22,20 @@ import java.util.zip.*;
 
 public final class MainActivity extends Activity {
     private static final int PICK_CHAT = 301;
+    private static final int OPEN_CALENDAR = 302;
     private static final int PURPLE = Color.rgb(108, 77, 255);
+    private static final int MUTED = Color.rgb(170, 174, 196);
     private final WhatsAppParser parser = new WhatsAppParser();
     // One worker keeps parsing and every SQLite access off the UI thread and
     // serialised against each other.
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private EventStore store;
     private LinearLayout cards;
+    private LinearLayout tabs;
     private TextView status;
+    private Button accessButton;
+    private int shownState = EventStore.PENDING;
+    private EventCandidate awaitingCalendar;
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -45,6 +51,12 @@ public final class MainActivity extends Activity {
         handleIntent(intent);
     }
 
+    @Override protected void onResume() {
+        super.onResume();
+        updateAccessButton();
+        refresh();
+    }
+
     @Override protected void onDestroy() {
         worker.shutdown();
         super.onDestroy();
@@ -52,7 +64,7 @@ public final class MainActivity extends Activity {
 
     private void buildUi() {
         getWindow().setStatusBarColor(Color.rgb(17, 18, 26));
-        LinearLayout root = column(20);
+        LinearLayout root = column();
         root.setBackgroundColor(Color.rgb(17, 18, 26));
         root.setPadding(dp(18), dp(18), dp(18), dp(18));
 
@@ -67,7 +79,7 @@ public final class MainActivity extends Activity {
         actions.setPadding(0, dp(16), 0, dp(8));
         Button importButton = button("ייבוא שיחה");
         importButton.setOnClickListener(v -> pickChat());
-        Button accessButton = button("התראות חדשות");
+        accessButton = button("התראות חדשות");
         accessButton.setOnClickListener(v -> startActivity(
                 new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)));
         actions.addView(importButton, new LinearLayout.LayoutParams(0, dp(52), 1));
@@ -76,16 +88,73 @@ public final class MainActivity extends Activity {
         actions.addView(accessButton, second);
         root.addView(actions);
 
+        tabs = new LinearLayout(this);
+        tabs.setOrientation(LinearLayout.HORIZONTAL);
+        tabs.setPadding(0, dp(6), 0, dp(4));
+        addTab("לבדיקה", EventStore.PENDING);
+        addTab("נקבעו", EventStore.SCHEDULED);
+        addTab("לא רלוונטי", EventStore.DISMISSED);
+        root.addView(tabs);
+
         status = text("", 14, Color.rgb(130, 226, 179));
         status.setPadding(0, dp(6), 0, dp(10));
         root.addView(status);
 
         ScrollView scroll = new ScrollView(this);
-        cards = column(12);
+        cards = column();
         scroll.addView(cards);
         root.addView(scroll, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
         setContentView(root);
+        updateAccessButton();
+    }
+
+    private void addTab(String label, int state) {
+        Button tab = new Button(this);
+        tab.setText(label);
+        tab.setTextSize(13);
+        tab.setAllCaps(false);
+        tab.setOnClickListener(v -> {
+            shownState = state;
+            paintTabs();
+            refresh();
+        });
+        tab.setTag(state);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(44), 1);
+        if (tabs.getChildCount() > 0) params.setMarginStart(dp(6));
+        tabs.addView(tab, params);
+        paintTabs();
+    }
+
+    private void paintTabs() {
+        for (int i = 0; i < tabs.getChildCount(); i++) {
+            Button tab = (Button) tabs.getChildAt(i);
+            boolean selected = Integer.valueOf(shownState).equals(tab.getTag());
+            tab.setBackgroundColor(selected ? PURPLE : Color.rgb(31, 33, 46));
+            tab.setTextColor(selected ? Color.WHITE : MUTED);
+        }
+    }
+
+    /**
+     * Android drops notification listeners after updates or memory pressure, and
+     * says nothing. Showing the live state turns a silent failure into a visible
+     * one.
+     */
+    private void updateAccessButton() {
+        if (accessButton == null) return;
+        boolean granted = notificationAccessGranted();
+        accessButton.setText(granted ? "התראות · פעיל" : "התראות · כבוי");
+        accessButton.setBackgroundColor(granted ? Color.rgb(38, 110, 76) : PURPLE);
+        if (granted) {
+            android.service.notification.NotificationListenerService.requestRebind(
+                    new ComponentName(this, WhatsNotificationListener.class));
+        }
+    }
+
+    private boolean notificationAccessGranted() {
+        String enabled = Settings.Secure.getString(
+                getContentResolver(), "enabled_notification_listeners");
+        return enabled != null && enabled.contains(getPackageName());
     }
 
     private void pickChat() {
@@ -101,7 +170,27 @@ public final class MainActivity extends Activity {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == PICK_CHAT && resultCode == RESULT_OK && data != null) {
             importUri(data.getData());
+        } else if (requestCode == OPEN_CALENDAR) {
+            confirmCalendarResult();
         }
+    }
+
+    /**
+     * Calendar apps report a cancelled result even after a successful save, so
+     * the only reliable source is the user. Until they answer, the event stays
+     * in the review list instead of quietly disappearing.
+     */
+    private void confirmCalendarResult() {
+        EventCandidate event = awaitingCalendar;
+        awaitingCalendar = null;
+        if (event == null) return;
+        new AlertDialog.Builder(this)
+                .setTitle("נקבע ביומן?")
+                .setMessage(event.title)
+                .setPositiveButton("כן, נקבע", (dialog, which) ->
+                        setState(event.id, EventStore.SCHEDULED))
+                .setNegativeButton("עדיין לא", (dialog, which) -> refresh())
+                .show();
     }
 
     private void handleIntent(Intent intent) {
@@ -136,25 +225,35 @@ public final class MainActivity extends Activity {
     private void importText(String content, String source) {
         List<EventCandidate> found = parser.parseExport(content, source);
         store.upsertAll(found);
-        List<EventCandidate> pending = store.pending();
+        shownState = EventStore.PENDING;
+        List<EventCandidate> shown = store.byState(shownState);
         runOnUiThread(() -> {
             status.setText("נמצאו " + found.size() + " אירועים לבדיקה");
-            render(pending);
+            paintTabs();
+            render(shown);
         });
     }
 
     private void refresh() {
+        int state = shownState;
         worker.execute(() -> {
-            List<EventCandidate> pending = store.pending();
-            runOnUiThread(() -> render(pending));
+            List<EventCandidate> events = store.byState(state);
+            runOnUiThread(() -> render(events));
+        });
+    }
+
+    private void setState(String id, int state) {
+        worker.execute(() -> {
+            store.setState(id, state);
+            List<EventCandidate> events = store.byState(shownState);
+            runOnUiThread(() -> render(events));
         });
     }
 
     private void render(List<EventCandidate> events) {
         cards.removeAllViews();
         if (events.isEmpty()) {
-            TextView empty = text("עדיין אין אירועים לבדיקה.\nייצא שיחת WhatsApp ללא מדיה ושתף אותה ל־WhatsPlan.",
-                    17, Color.rgb(180, 184, 205));
+            TextView empty = text(emptyMessage(), 17, Color.rgb(180, 184, 205));
             empty.setGravity(Gravity.CENTER);
             empty.setPadding(dp(10), dp(80), dp(10), dp(20));
             cards.addView(empty);
@@ -163,8 +262,16 @@ public final class MainActivity extends Activity {
         for (EventCandidate event : events) cards.addView(eventCard(event));
     }
 
+    private String emptyMessage() {
+        if (shownState == EventStore.SCHEDULED) {
+            return "עדיין לא סימנת אירוע כנקבע.\nאחרי שתפתח אירוע ביומן ותאשר, הוא יופיע כאן.";
+        }
+        if (shownState == EventStore.DISMISSED) return "לא סימנת שום אירוע כלא רלוונטי.";
+        return "עדיין אין אירועים לבדיקה.\nייצא שיחת WhatsApp ללא מדיה ושתף אותה ל־WhatsPlan.";
+    }
+
     private View eventCard(EventCandidate event) {
-        LinearLayout card = column(8);
+        LinearLayout card = column();
         card.setPadding(dp(16), dp(16), dp(16), dp(16));
         card.setBackgroundColor(Color.rgb(31, 33, 46));
         TextView title = text(event.title, 19, Color.WHITE);
@@ -175,32 +282,52 @@ public final class MainActivity extends Activity {
                 event.start.format(DateTimeFormatter.ofPattern("EEEE, d.M.yyyy · HH:mm",
                         new Locale("he", "IL")));
         card.addView(text(when, 16, Color.rgb(181, 169, 255)));
+        if (event.recurrence != null) {
+            card.addView(text("חוזר: " + recurrenceLabel(event.recurrence), 14,
+                    Color.rgb(130, 226, 179)));
+        }
         if (event.location != null) card.addView(text("מקום: " + event.location, 14, Color.WHITE));
-        card.addView(text("ודאות: " + event.confidence + "% · " + statusLabel(event),
-                13, Color.rgb(170, 174, 196)));
+        card.addView(text("ודאות: " + event.confidence + "% · " + statusLabel(event), 13, MUTED));
         String conversation = event.groupConversation
                 ? "קבוצה: " + event.conversationName + " · שולח: " + event.sender
                 : "שיחה עם: " + event.sender;
-        card.addView(text(conversation + "\n“" + shorten(event.evidence) + "”",
-                13, Color.rgb(170, 174, 196)));
+        card.addView(text(conversation + "\n“" + shorten(event.evidence) + "”", 13, MUTED));
+        card.addView(cardButtons(event));
+        return card;
+    }
 
+    private View cardButtons(EventCandidate event) {
         LinearLayout buttons = new LinearLayout(this);
         buttons.setOrientation(LinearLayout.HORIZONTAL);
-        Button calendar = button(event.status == EventCandidate.Status.CANCELLED
-                ? "סמן כטופל" : "פתח ביומן");
-        calendar.setEnabled(event.start != null);
-        calendar.setOnClickListener(v -> {
-            if (event.status == EventCandidate.Status.CANCELLED) markReviewed(event.id);
-            else openCalendar(event);
-        });
-        Button dismiss = button("התעלם");
-        dismiss.setOnClickListener(v -> markReviewed(event.id));
-        buttons.addView(calendar, new LinearLayout.LayoutParams(0, dp(48), 1));
-        LinearLayout.LayoutParams dismissParams = new LinearLayout.LayoutParams(0, dp(48), 1);
-        dismissParams.setMarginStart(dp(8));
-        buttons.addView(dismiss, dismissParams);
-        card.addView(buttons);
-        return card;
+        if (shownState == EventStore.PENDING) {
+            Button calendar = button(event.status == EventCandidate.Status.CANCELLED
+                    ? "סמן כטופל" : "פתח ביומן");
+            calendar.setEnabled(event.start != null
+                    || event.status == EventCandidate.Status.CANCELLED);
+            calendar.setOnClickListener(v -> {
+                if (event.status == EventCandidate.Status.CANCELLED) {
+                    setState(event.id, EventStore.DISMISSED);
+                } else {
+                    openCalendar(event);
+                }
+            });
+            Button dismiss = button("לא רלוונטי");
+            dismiss.setOnClickListener(v -> setState(event.id, EventStore.DISMISSED));
+            addSideBySide(buttons, calendar, dismiss);
+        } else {
+            Button back = button("החזר לבדיקה");
+            back.setOnClickListener(v -> setState(event.id, EventStore.PENDING));
+            buttons.addView(back, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
+        }
+        return buttons;
+    }
+
+    private void addSideBySide(LinearLayout row, View first, View second) {
+        row.addView(first, new LinearLayout.LayoutParams(0, dp(48), 1));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(48), 1);
+        params.setMarginStart(dp(8));
+        row.addView(second, params);
     }
 
     private void openCalendar(EventCandidate event) {
@@ -214,16 +341,28 @@ public final class MainActivity extends Activity {
                         event.start.toInstant().toEpochMilli())
                 .putExtra(CalendarContract.EXTRA_EVENT_END_TIME,
                         event.end.toInstant().toEpochMilli());
-        startActivity(intent);
-        markReviewed(event.id);
+        if (event.recurrence != null) {
+            intent.putExtra(CalendarContract.Events.RRULE, event.recurrence);
+        }
+        awaitingCalendar = event;
+        startActivityForResult(intent, OPEN_CALENDAR);
     }
 
-    private void markReviewed(String id) {
-        worker.execute(() -> {
-            store.markReviewed(id);
-            List<EventCandidate> pending = store.pending();
-            runOnUiThread(() -> render(pending));
-        });
+    private String recurrenceLabel(String rrule) {
+        if (rrule.startsWith("FREQ=MONTHLY")) return "כל חודש";
+        int day = rrule.indexOf("BYDAY=");
+        if (day < 0) return "כל שבוע";
+        String code = rrule.substring(day + 6);
+        Map<String, String> names = new HashMap<>();
+        names.put("SU", "ראשון");
+        names.put("MO", "שני");
+        names.put("TU", "שלישי");
+        names.put("WE", "רביעי");
+        names.put("TH", "חמישי");
+        names.put("FR", "שישי");
+        names.put("SA", "שבת");
+        String name = names.get(code);
+        return name == null ? "כל שבוע" : "כל יום " + name;
     }
 
     private void requestNotificationPermission() {
@@ -261,7 +400,7 @@ public final class MainActivity extends Activity {
         return tail == null ? "WhatsApp export" : tail.substring(tail.lastIndexOf('/') + 1);
     }
 
-    private LinearLayout column(int spacing) {
+    private LinearLayout column() {
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setShowDividers(LinearLayout.SHOW_DIVIDER_MIDDLE);
@@ -281,6 +420,7 @@ public final class MainActivity extends Activity {
         Button button = new Button(this);
         button.setText(label);
         button.setTextSize(14);
+        button.setAllCaps(false);
         button.setTextColor(Color.WHITE);
         button.setBackgroundColor(PURPLE);
         return button;

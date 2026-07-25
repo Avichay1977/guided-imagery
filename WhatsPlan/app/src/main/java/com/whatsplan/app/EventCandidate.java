@@ -18,12 +18,16 @@ public final class EventCandidate {
     public String evidence;
     public ZonedDateTime start;
     public ZonedDateTime end;
+    public String recurrence;
     public int confidence;
     public Status status;
+    /** One of EventStore.PENDING, EventStore.DISMISSED, EventStore.SCHEDULED. */
+    public int state;
 
     public EventCandidate() {
         status = Status.PROPOSED;
         confidence = 50;
+        state = EventStore.PENDING;
     }
 
     public String fingerprint() {
