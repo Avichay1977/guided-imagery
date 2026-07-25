@@ -20,7 +20,8 @@ public final class WhatsAppParser {
             "^[\\[\\s]*(\\d{1,2})[./-](\\d{1,2})[./-](\\d{2,4}),?\\s+(\\d{1,2}):(\\d{2})(?::\\d{2})?"
                     + "\\s*([AaPp][Mm])?\\s*\\]?\\s*[-–—]?\\s*([^:]{1,80}):\\s*(.*)$");
     private static final Pattern CLOCK = Pattern.compile(
-            "(?<!\\d)(?:ב(?:שעה)?[\\s-]*)?(\\d{1,2})(?::|\\.)(\\d{2})(?!\\d)|(?:ב(?:שעה)?[\\s-]+)(\\d{1,2})(?!\\d)");
+            "(?<!\\d)(?:ב(?:שעה)?[\\s-]*)?(\\d{1,2})(?::|\\.)(\\d{2})(?!\\d)"
+                    + "|(?:ב(?:שעה)?[\\s-]+)(\\d{1,2})(?!\\d)(?!\\s*(?:דקות|דק|שעות))");
     private static final Pattern NUMERIC_DATE = Pattern.compile(
             "(?<!\\d)(\\d{1,2})[./](\\d{1,2})(?:[./](\\d{2,4}))?(?!\\d)");
     private static final Pattern LOCATION = Pattern.compile(
@@ -49,6 +50,17 @@ public final class WhatsAppParser {
     private static final Pattern[] CHANGE_WORDS = words(
             "נדחה", "נדחתה", "הוקדם", "הוקדמה", "במקום", "שינוי", "בסוף",
             "moved", "postponed", "rescheduled");
+
+    /**
+     * Saying you will miss something, or arrive late to it, is not a new
+     * appointment. Without this, "אני מאחר ב-20 דקות לחזרה" invents a rehearsal.
+     */
+    private static final Pattern[] ABSENCE_WORDS = words(
+            "מפספס", "מפספסת", "לא אוכל", "לא אגיע", "לא מגיע", "לא מגיעה",
+            "לא אהיה", "לא יכול להגיע", "can't make it", "running late");
+    /** "מאחר ש" is a conjunction, not lateness. */
+    private static final Pattern LATE = Pattern.compile(
+            "(?<!\\p{L})[בהלמשוכ]{0,2}מאחר(?:ת|ים|ות)?(?!\\s*ש)(?!\\p{L})");
 
     /**
      * Hebrew glues prefixes onto nouns, so a plain substring test turns
@@ -144,11 +156,15 @@ public final class WhatsAppParser {
         boolean eventLanguage = containsAny(normalized, EVENT_WORDS);
         boolean cancellation = containsAny(normalized, CANCEL_WORDS);
         boolean change = containsAny(normalized, CHANGE_WORDS);
+        boolean absence = containsAny(normalized, ABSENCE_WORDS) || LATE.matcher(normalized).find();
         List<DateHit> dates = dateHits(normalized, messageStamp.toLocalDate());
         LocalDate date = extractDate(normalized, messageStamp.toLocalDate(), dates);
         LocalTime time = extractTime(maskDates(normalized, dates));
 
         if (!eventLanguage && !cancellation && !change) return;
+        // A cancellation still matters even when the sender also says they
+        // cannot come; anything else about absence is not a new event.
+        if (absence && !cancellation) return;
         if (date == null && time == null && !cancellation) return;
 
         EventCandidate event = new EventCandidate();

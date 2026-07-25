@@ -49,6 +49,46 @@ public final class DetectionQualityTest {
         assertEquals("FREQ=MONTHLY", events.get(0).recurrence);
     }
 
+    @Test public void arrivingLateIsNotANewEvent() {
+        List<EventCandidate> events = parser.parseExport(
+                "03.06.2026, 19:55 - רון: אני מאחר ב-20 דקות לחזרה\n", "הלהקה");
+        assertTrue("lateness must not invent a rehearsal at 20:00", events.isEmpty());
+    }
+
+    @Test public void missingAnEventIsNotAnEvent() {
+        List<EventCandidate> events = parser.parseExport(
+                "10.06.2026, 07:30 - נועה: אני חוזרת מחו\"ל ב-15.6, "
+                        + "אז את החזרה של ה-14 אני מפספסת\n", "הלהקה");
+        assertTrue(events.isEmpty());
+    }
+
+    @Test public void becauseIsNotLateness() {
+        // "מאחר ש" is a conjunction; it must not veto a real reschedule.
+        List<EventCandidate> events = parser.parseExport(
+                "04.06.2026, 09:00 - אבי: מאחר שהאולפן סגור, "
+                        + "החזרה נדחתה ליום חמישי ב-21:00\n", "הלהקה");
+        assertEquals(1, events.size());
+        assertEquals(21, events.get(0).start.getHour());
+    }
+
+    @Test public void aCancellationSurvivesAnApology() {
+        List<EventCandidate> events = parser.parseExport(
+                "20.06.2026, 09:00 - אבי: אני לא אגיע, החזרה מחר מבוטלת\n", "הלהקה");
+        assertEquals(1, events.size());
+        assertEquals(EventCandidate.Status.CANCELLED, events.get(0).status);
+    }
+
+    @Test public void aPostponementUpdatesTheRehearsalInsteadOfAddingOne() {
+        String history =
+                "01.06.2026, 10:31 - אבי: סגרנו חזרה ביום רביעי ב-20:00 אצל אולפן קסם\n" +
+                "03.06.2026, 19:55 - רון: אני מאחר ב-20 דקות לחזרה\n" +
+                "04.06.2026, 09:00 - אבי: בסוף החזרה נדחתה ליום חמישי ב-21:00\n";
+        List<EventCandidate> events = parser.parseExport(history, "הלהקה");
+        assertEquals("one rehearsal, moved — not two", 1, events.size());
+        assertEquals(21, events.get(0).start.getHour());
+        assertEquals("אולפן קסם", events.get(0).location);
+    }
+
     @Test public void aOneOffEventCarriesNoRecurrence() {
         List<EventCandidate> events = parser.parseExport(
                 "12.07.2026, 10:15 - אבי: קבענו חזרה מחר ב-20:00\n", "הלהקה");
