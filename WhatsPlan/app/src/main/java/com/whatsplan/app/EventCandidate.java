@@ -19,6 +19,8 @@ public final class EventCandidate {
     public ZonedDateTime start;
     public ZonedDateTime end;
     public String recurrence;
+    /** The message changed or cancelled something, rather than proposing it. */
+    public boolean update;
     public int confidence;
     public Status status;
     /** One of EventStore.PENDING, EventStore.DISMISSED, EventStore.SCHEDULED. */

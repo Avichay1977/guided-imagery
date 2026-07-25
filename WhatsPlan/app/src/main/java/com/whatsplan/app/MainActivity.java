@@ -30,8 +30,9 @@ public final class MainActivity extends Activity {
     private static final int MUTED = Color.rgb(170, 174, 196);
     private final WhatsAppParser parser = new WhatsAppParser();
     // One worker keeps parsing and every SQLite access off the UI thread and
-    // serialised against each other.
-    private final ExecutorService worker = Executors.newSingleThreadExecutor();
+    // serialised against each other. Package-private and replaceable so a test
+    // can run the same work inline, which the test framework requires.
+    ExecutorService worker = Executors.newSingleThreadExecutor();
     private EventStore store;
     private LinearLayout cards;
     private LinearLayout tabs;

@@ -74,9 +74,14 @@ public final class EventStore extends SQLiteOpenHelper {
                 boolean sameKind = eventKind(existing.title).equals(eventKind(incoming.title));
                 if (!sameConversation || !sameKind) continue;
 
-                boolean closeEnough = incoming.start == null || existing.start == null
-                        || Math.abs(Duration.between(existing.start, incoming.start).toDays()) <= 14;
-                if (!closeEnough) continue;
+                // A message that moves or cancels something may point at a date
+                // two weeks out. Anything else has to be the same occurrence,
+                // otherwise a standing weekly rehearsal swallows the one-off.
+                boolean sameOccurrence = incoming.start == null || existing.start == null
+                        || Math.abs(Duration.between(existing.start, incoming.start).toHours()) <= 12;
+                boolean reachable = sameOccurrence || (incoming.update
+                        && Math.abs(Duration.between(existing.start, incoming.start).toDays()) <= 14);
+                if (!reachable) continue;
 
                 incoming.id = existing.id;
                 if (incoming.start == null) {

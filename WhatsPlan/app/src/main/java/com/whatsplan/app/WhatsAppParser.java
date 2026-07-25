@@ -176,6 +176,7 @@ public final class WhatsAppParser {
         event.title = inferTitle(normalized, source);
         event.location = extractLocation(message);
         event.recurrence = recurrence(normalized, date);
+        event.update = change || cancellation;
         event.confidence = 42;
         if (date != null) event.confidence += 20;
         if (time != null) event.confidence += 20;
