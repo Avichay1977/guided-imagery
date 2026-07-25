@@ -8,6 +8,9 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:mimeType="text/calendar" />
         </intent>
+        <!-- Only to open WhatsApp for the export; its data is never touched. -->
+        <package android:name="com.whatsapp" />
+        <package android:name="com.whatsapp.w4b" />
     </queries>
 
     <application

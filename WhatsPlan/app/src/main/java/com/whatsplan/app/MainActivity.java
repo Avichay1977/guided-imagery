@@ -86,8 +86,8 @@ public final class MainActivity extends Activity {
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
         actions.setPadding(0, dp(16), 0, dp(8));
-        Button importButton = button("ייבוא שיחה");
-        importButton.setOnClickListener(v -> pickChat());
+        Button importButton = button("ייבוא מוואטסאפ");
+        importButton.setOnClickListener(v -> startWhatsAppImport());
         accessButton = button("התראות חדשות");
         accessButton.setOnClickListener(v -> startActivity(
                 new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)));
@@ -164,6 +164,41 @@ public final class MainActivity extends Activity {
         String enabled = Settings.Secure.getString(
                 getContentResolver(), "enabled_notification_listeners");
         return enabled != null && enabled.contains(getPackageName());
+    }
+
+    /**
+     * WhatsApp has no import interface and its data is off limits, so the
+     * shortest honest path is to hand the user straight to the export screen
+     * with the steps in front of them. The share sheet brings the file back.
+     */
+    private void startWhatsAppImport() {
+        Intent whatsApp = whatsAppLaunchIntent();
+        AlertDialog.Builder dialog = new AlertDialog.Builder(this)
+                .setTitle("ייבוא שיחה מוואטסאפ")
+                .setMessage("ב-WhatsApp:\n\n"
+                        + "1. פתח את השיחה\n"
+                        + "2. שלוש נקודות ⋮\n"
+                        + "3. עוד ← ייצוא צ'אט\n"
+                        + "4. ללא מדיה\n"
+                        + "5. בחר את WhatsPlan ברשימת השיתוף")
+                .setNeutralButton("בחר קובץ שכבר יוצא", (d, which) -> pickChat())
+                .setNegativeButton("סגור", null);
+        if (whatsApp == null) {
+            dialog.setMessage("לא נמצאה אפליקציית WhatsApp במכשיר.\n"
+                    + "אפשר לבחור קובץ ייצוא ששמור כבר במכשיר.");
+        } else {
+            dialog.setPositiveButton("פתח את WhatsApp",
+                    (d, which) -> startActivity(whatsApp));
+        }
+        dialog.show();
+    }
+
+    private Intent whatsAppLaunchIntent() {
+        for (String name : new String[]{"com.whatsapp", "com.whatsapp.w4b"}) {
+            Intent intent = getPackageManager().getLaunchIntentForPackage(name);
+            if (intent != null) return intent;
+        }
+        return null;
     }
 
     /**
