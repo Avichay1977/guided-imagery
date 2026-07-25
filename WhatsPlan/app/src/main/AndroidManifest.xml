@@ -2,6 +2,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Needed to find a calendar app for the generated .ics on Android 11+. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="text/calendar" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -29,6 +37,12 @@
                 <data android:mimeType="application/zip" />
             </intent-filter>
         </activity>
+
+        <provider
+            android:name=".IcsProvider"
+            android:authorities="com.whatsplan.app.calendar"
+            android:exported="false"
+            android:grantUriPermissions="true" />
 
         <service
             android:name=".WhatsNotificationListener"

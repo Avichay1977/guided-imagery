@@ -15,6 +15,7 @@ import android.widget.*;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
@@ -24,6 +25,7 @@ import java.util.zip.*;
 public final class MainActivity extends Activity {
     private static final int PICK_CHAT = 301;
     private static final int OPEN_CALENDAR = 302;
+    private static final int EXPORT_ICS = 303;
     private static final int PURPLE = Color.rgb(108, 77, 255);
     private static final int MUTED = Color.rgb(170, 174, 196);
     private final WhatsAppParser parser = new WhatsAppParser();
@@ -42,6 +44,7 @@ public final class MainActivity extends Activity {
     private final Deque<EventCandidate> calendarQueue = new ArrayDeque<>();
     private boolean batchRunning;
     private int batchDone;
+    private List<EventCandidate> exported;
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -185,6 +188,8 @@ public final class MainActivity extends Activity {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == PICK_CHAT && resultCode == RESULT_OK && data != null) {
             importUris(selectedUris(data));
+        } else if (requestCode == EXPORT_ICS) {
+            confirmExport();
         } else if (requestCode == OPEN_CALENDAR) {
             if (batchRunning) continueBatch();
             else confirmCalendarResult();
@@ -364,6 +369,15 @@ public final class MainActivity extends Activity {
         addSideBySide(row, toggleAll, open);
         bar.addView(row);
 
+        Button exportAll = button("ייצוא כקובץ יומן (" + selected.size() + ")");
+        exportAll.setEnabled(!selected.isEmpty());
+        exportAll.setBackgroundColor(Color.rgb(38, 110, 76));
+        exportAll.setOnClickListener(v -> exportSelected(events));
+        LinearLayout.LayoutParams exportParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(46));
+        exportParams.topMargin = dp(8);
+        bar.addView(exportAll, exportParams);
+
         Button dismissAll = button("סמן הכל כלא רלוונטי (" + selected.size() + ")");
         dismissAll.setEnabled(!selected.isEmpty());
         dismissAll.setBackgroundColor(Color.rgb(64, 66, 86));
@@ -373,6 +387,86 @@ public final class MainActivity extends Activity {
         params.topMargin = dp(8);
         bar.addView(dismissAll, params);
         return bar;
+    }
+
+    /**
+     * One calendar file for the whole selection: the calendar app imports them
+     * together, which is the closest thing to a single approval that is
+     * possible without a calendar write permission.
+     */
+    private void exportSelected(List<EventCandidate> events) {
+        List<EventCandidate> chosen = new ArrayList<>();
+        int undated = 0;
+        for (EventCandidate event : events) {
+            if (!selected.contains(event.id)) continue;
+            if (event.start == null) undated++;
+            else chosen.add(event);
+        }
+        if (chosen.isEmpty()) {
+            status.setText("לאירועים שנבחרו חסר תאריך או שעה");
+            return;
+        }
+        int skipped = undated;
+        worker.execute(() -> {
+            String calendar = new IcsWriter().write(chosen, ZonedDateTime.now());
+            try (OutputStream out = new FileOutputStream(IcsProvider.file(this))) {
+                out.write(calendar.getBytes(StandardCharsets.UTF_8));
+            } catch (IOException error) {
+                String reason = error.getMessage();
+                runOnUiThread(() -> status.setText("כתיבת הקובץ נכשלה: " + reason));
+                return;
+            }
+            runOnUiThread(() -> openCalendarFile(chosen, skipped));
+        });
+    }
+
+    private void openCalendarFile(List<EventCandidate> chosen, int skipped) {
+        exported = chosen;
+        Uri uri = IcsProvider.uri();
+        Intent view = new Intent(Intent.ACTION_VIEW)
+                .setDataAndType(uri, "text/calendar")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        Intent share = new Intent(Intent.ACTION_SEND)
+                .setType("text/calendar")
+                .putExtra(Intent.EXTRA_STREAM, uri)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        try {
+            startActivityForResult(view, EXPORT_ICS);
+        } catch (ActivityNotFoundException noViewer) {
+            try {
+                startActivityForResult(
+                        Intent.createChooser(share, "ייבוא ליומן"), EXPORT_ICS);
+            } catch (ActivityNotFoundException none) {
+                exported = null;
+                status.setText("לא נמצאה אפליקציה שקולטת קובץ יומן");
+                return;
+            }
+        }
+        if (skipped > 0) status.setText(skipped + " אירועים ללא תאריך נותרו לבדיקה");
+    }
+
+    private void confirmExport() {
+        List<EventCandidate> chosen = exported;
+        exported = null;
+        if (chosen == null || chosen.isEmpty()) return;
+        new AlertDialog.Builder(this)
+                .setTitle("נוספו ליומן?")
+                .setMessage(chosen.size() + " אירועים נשלחו ליומן")
+                .setPositiveButton("כן, נקבעו", (dialog, which) -> {
+                    List<String> ids = new ArrayList<>();
+                    for (EventCandidate event : chosen) ids.add(event.id);
+                    selected.clear();
+                    worker.execute(() -> {
+                        for (String id : ids) store.setState(id, EventStore.SCHEDULED);
+                        List<EventCandidate> events = store.byState(shownState);
+                        runOnUiThread(() -> {
+                            status.setText(ids.size() + " אירועים סומנו כנקבעו");
+                            render(events);
+                        });
+                    });
+                })
+                .setNegativeButton("עדיין לא", (dialog, which) -> refresh())
+                .show();
     }
 
     private void dismissSelected() {
