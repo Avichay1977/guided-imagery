@@ -48,6 +48,7 @@ public final class EventStore extends SQLiteOpenHelper {
         try {
             for (EventCandidate event : events) {
                 mergeWithExistingConversationEvent(db, event);
+                keepEarlierDecision(db, event);
                 ContentValues values = toValues(event);
                 db.insertWithOnConflict("events", null, values, SQLiteDatabase.CONFLICT_REPLACE);
             }
@@ -102,6 +103,19 @@ public final class EventStore extends SQLiteOpenHelper {
                 incoming.state = changed ? PENDING : existing.state;
                 return;
             }
+        }
+    }
+
+    /**
+     * Re-importing a chat used to resurrect everything the user had already
+     * dismissed, because the row is replaced by a freshly parsed one. The same
+     * message is the same decision unless it now says something changed.
+     */
+    private void keepEarlierDecision(SQLiteDatabase db, EventCandidate incoming) {
+        if (incoming.update || incoming.id == null) return;
+        try (Cursor cursor = db.query("events", new String[]{"reviewed"}, "id=?",
+                new String[]{incoming.id}, null, null, null)) {
+            if (cursor.moveToFirst()) incoming.state = cursor.getInt(0);
         }
     }
 

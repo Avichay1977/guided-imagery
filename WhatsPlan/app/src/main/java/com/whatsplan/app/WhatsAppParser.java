@@ -52,6 +52,15 @@ public final class WhatsAppParser {
             "moved", "postponed", "rescheduled");
 
     /**
+     * Plenty of real scheduling never names the event: "נתראה ביום שני ב-18:00".
+     * These only count when the message carries both a date and a time, and the
+     * candidate is ranked lower so it reads as a suggestion.
+     */
+    private static final Pattern[] SCHEDULING_HINTS = words(
+            "נתראה", "ניפגש", "נפגש", "מציע", "מציעה", "מתאים", "בוא", "בואו",
+            "אפשר", "מחכה", "מחכים", "see you", "let's meet");
+
+    /**
      * Saying you will miss something, or arrive late to it, is not a new
      * appointment. Without this, "אני מאחר ב-20 דקות לחזרה" invents a rehearsal.
      */
@@ -161,7 +170,11 @@ public final class WhatsAppParser {
         LocalDate date = extractDate(normalized, messageStamp.toLocalDate(), dates);
         LocalTime time = extractTime(maskDates(normalized, dates));
 
-        if (!eventLanguage && !cancellation && !change) return;
+        boolean hint = !eventLanguage && containsAny(normalized, SCHEDULING_HINTS);
+        if (!eventLanguage && !cancellation && !change && !hint) return;
+        // Without a noun to lean on, a hint needs the full date and time before
+        // it is worth showing.
+        if (hint && (date == null || time == null)) return;
         // A cancellation still matters even when the sender also says they
         // cannot come; anything else about absence is not a new event.
         if (absence && !cancellation) return;
@@ -177,10 +190,12 @@ public final class WhatsAppParser {
         event.location = extractLocation(message);
         event.recurrence = recurrence(normalized, date);
         event.update = change || cancellation;
-        event.confidence = 42;
+        event.confidence = hint ? 28 : 42;
         if (date != null) event.confidence += 20;
         if (time != null) event.confidence += 20;
-        if (containsAny(normalized, CONFIRM_WORDS)) {
+        // A hint word must not count twice, as both the reason to look and a
+        // confirmation of something nobody named.
+        if (!hint && containsAny(normalized, CONFIRM_WORDS)) {
             event.status = EventCandidate.Status.CONFIRMED;
             event.confidence += 12;
         }

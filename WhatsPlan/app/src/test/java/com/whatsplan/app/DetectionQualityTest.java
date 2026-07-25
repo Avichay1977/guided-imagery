@@ -89,6 +89,27 @@ public final class DetectionQualityTest {
         assertEquals("אולפן קסם", events.get(0).location);
     }
 
+    @Test public void schedulingWithoutAnEventNounIsStillCaught() {
+        List<EventCandidate> events = parser.parseExport(
+                "12.07.2026, 10:15 - רון: נתראה ביום שני ב-18:00\n", "רון");
+        assertEquals(1, events.size());
+        assertEquals(18, events.get(0).start.getHour());
+        assertTrue("a bare hint should rank below a named event",
+                events.get(0).confidence < 80);
+    }
+
+    @Test public void aHintWithoutBothDateAndTimeIsIgnored() {
+        assertTrue("no time, so nothing to schedule",
+                parser.parseExport("12.07.2026, 10:15 - רון: נתראה ביום שני\n", "רון").isEmpty());
+        assertTrue("no date either",
+                parser.parseExport("12.07.2026, 10:15 - רון: נתראה\n", "רון").isEmpty());
+    }
+
+    @Test public void chatterWithATimeIsStillIgnored() {
+        assertTrue(parser.parseExport(
+                "12.07.2026, 10:15 - רון: הסרט מתחיל מחר ב-20:00 בטלוויזיה\n", "רון").isEmpty());
+    }
+
     @Test public void aOneOffEventCarriesNoRecurrence() {
         List<EventCandidate> events = parser.parseExport(
                 "12.07.2026, 10:15 - אבי: קבענו חזרה מחר ב-20:00\n", "הלהקה");
