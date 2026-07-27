@@ -1,0 +1,60 @@
+name: Build Marketplace Anywhere APK
+
+on:
+  push:
+    branches: [marketplace-anywhere-apk]
+    paths:
+      - 'marketplace-anywhere-android/**'
+      - '.github/workflows/build-marketplace-anywhere-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.0'
+
+      - name: Install Android SDK 36
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+
+      - name: Build debug APK
+        working-directory: marketplace-anywhere-android
+        run: gradle --no-daemon --stacktrace :app:assembleDebug
+
+      - name: Verify package, permissions and signature
+        run: |
+          APK='marketplace-anywhere-android/app/build/outputs/apk/debug/app-debug.apk'
+          test -s "$APK"
+          apksigner verify --verbose --print-certs "$APK"
+          aapt dump badging "$APK" | tee apk-badging.txt
+          aapt dump permissions "$APK" | tee apk-permissions.txt
+          if grep -q 'uses-permission' apk-permissions.txt; then
+            echo 'Unexpected permissions found'
+            exit 1
+          fi
+          cp "$APK" Marketplace-Anywhere-v0.3-personal.apk
+          sha256sum Marketplace-Anywhere-v0.3-personal.apk | tee SHA256.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Marketplace-Anywhere-v0.3-personal
+          path: |
+            Marketplace-Anywhere-v0.3-personal.apk
+            SHA256.txt
+            apk-badging.txt
+            apk-permissions.txt
+          if-no-files-found: error
