@@ -6,6 +6,11 @@ on:
     paths:
       - 'marketplace-anywhere-android/**'
       - '.github/workflows/build-marketplace-anywhere-apk.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'marketplace-anywhere-android/**'
+      - '.github/workflows/build-marketplace-anywhere-apk.yml'
   workflow_dispatch:
 
 permissions:
@@ -38,22 +43,23 @@ jobs:
       - name: Verify package, permissions and signature
         run: |
           APK='marketplace-anywhere-android/app/build/outputs/apk/debug/app-debug.apk'
+          TOOLS="$ANDROID_HOME/build-tools/36.0.0"
           test -s "$APK"
-          apksigner verify --verbose --print-certs "$APK"
-          aapt dump badging "$APK" | tee apk-badging.txt
-          aapt dump permissions "$APK" | tee apk-permissions.txt
+          "$TOOLS/apksigner" verify --verbose --print-certs "$APK"
+          "$TOOLS/aapt" dump badging "$APK" | tee apk-badging.txt
+          "$TOOLS/aapt" dump permissions "$APK" | tee apk-permissions.txt
           if grep -q 'uses-permission' apk-permissions.txt; then
             echo 'Unexpected permissions found'
             exit 1
           fi
-          cp "$APK" Marketplace-Anywhere-v0.3-personal.apk
-          sha256sum Marketplace-Anywhere-v0.3-personal.apk | tee SHA256.txt
+          cp "$APK" Marketplace-Anywhere-v0.4-personal.apk
+          sha256sum Marketplace-Anywhere-v0.4-personal.apk | tee SHA256.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Marketplace-Anywhere-v0.3-personal
+          name: Marketplace-Anywhere-v0.4-personal
           path: |
-            Marketplace-Anywhere-v0.3-personal.apk
+            Marketplace-Anywhere-v0.4-personal.apk
             SHA256.txt
             apk-badging.txt
             apk-permissions.txt
