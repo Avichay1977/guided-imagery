@@ -40,35 +40,46 @@ jobs:
           SDKMANAGER="$(command -v sdkmanager)"
           yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
           "$SDKMANAGER" --install 'platforms;android-36' 'build-tools;36.0.0'
-          "$SDKMANAGER" --list_installed
 
       - name: Build debug APK
         working-directory: marketplace-anywhere-android
         run: gradle --no-daemon --stacktrace :app:assembleDebug
 
-      - name: Verify package, permissions and signature
+      - name: Inspect APK
         shell: bash
         run: |
           set -euo pipefail
           APK='marketplace-anywhere-android/app/build/outputs/apk/debug/app-debug.apk'
           TOOLS="$ANDROID_HOME/build-tools/36.0.0"
           test -s "$APK"
-          "$TOOLS/apksigner" verify --verbose --print-certs "$APK"
+          "$TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee apk-signature.txt
           "$TOOLS/aapt" dump badging "$APK" | tee apk-badging.txt
           "$TOOLS/aapt" dump permissions "$APK" | tee apk-permissions.txt
-          if grep -q 'uses-permission' apk-permissions.txt; then
-            echo 'Unexpected permissions found'
-            exit 1
-          fi
           cp "$APK" Marketplace-Anywhere-v0.4-personal.apk
           sha256sum Marketplace-Anywhere-v0.4-personal.apk | tee SHA256.txt
 
+      - name: Enforce personal privacy and metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F "package: name='com.kesem.marketplaceanywhere'" apk-badging.txt
+          grep -F "versionName='0.4'" apk-badging.txt
+          grep -F "application-label:'Marketplace Anywhere'" apk-badging.txt
+          if grep -Eq '^uses-permission(:|-sdk-[0-9]+:)' apk-permissions.txt; then
+            echo 'Unexpected Android permission found:'
+            grep -E '^uses-permission(:|-sdk-[0-9]+:)' apk-permissions.txt
+            exit 1
+          fi
+          echo 'PASS: signed APK, correct package/label/version, zero requested Android permissions.'
+
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: Marketplace-Anywhere-v0.4-personal
           path: |
             Marketplace-Anywhere-v0.4-personal.apk
             SHA256.txt
+            apk-signature.txt
             apk-badging.txt
             apk-permissions.txt
           if-no-files-found: error
