@@ -179,8 +179,17 @@ class TestRemixEndpoint:
 
 class TestRateLimiting:
     def test_repeated_calls_eventually_get_429_with_retry_after(self, client):
+        # Derived from the configured limit rather than hardcoded, so retuning
+        # the numbers for personal use does not silently stop exercising this.
+        from config import RATE_LIMIT_TRANSLATE
+        from rate_limit import parse_spec
+
+        allowed, _ = parse_spec(RATE_LIMIT_TRANSLATE)
         payload = {"text": "hi", "source_language": "he", "target_language": "he"}
-        statuses = [client.post("/api/translate", json=payload).status_code for _ in range(30)]
+        statuses = [
+            client.post("/api/translate", json=payload).status_code
+            for _ in range(allowed + 5)
+        ]
 
         assert statuses[0] == 200, "the first request should always be allowed"
         assert 429 in statuses, "the limiter should reject once the window fills"

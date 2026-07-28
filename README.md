@@ -47,13 +47,13 @@ Only `GOOGLE_API_KEY` is required. Everything else has a working default.
 | `AUDIO_TTL_HOURS` | `6` | How long a rendered track survives before pruning |
 | `AUDIO_MAX_MB` | `512` | Total size budget for rendered audio |
 | `TTS_MAX_ATTEMPTS` | `3` | Retries per segment before a render is abandoned |
-| `RATE_LIMIT_SESSION` | `5/hour` | Per-client generation budget |
-| `RATE_LIMIT_TRANSLATE` | `20/hour` | |
-| `RATE_LIMIT_YOUTUBE` | `10/hour` | |
-| `RATE_LIMIT_REMIX` | `60/hour` | Remixing costs no model or TTS calls, so it is generous |
+| `RATE_LIMIT_SESSION` | `60/hour` | Runaway guard, not an abuse defence |
+| `RATE_LIMIT_TRANSLATE` | `120/hour` | |
+| `RATE_LIMIT_YOUTUBE` | `60/hour` | |
+| `RATE_LIMIT_REMIX` | `240/hour` | Remixing costs no model or TTS calls |
 | `MAX_CONCURRENT_GENERATIONS` | `2` | Process-wide ceiling on simultaneous renders |
 | `TRUSTED_PROXY_HOPS` | `1` | Reverse proxies in front of the app; used to read the real client IP |
-| `ALLOWED_ORIGINS` | localhost + Render | Extra CORS origins, comma-separated |
+| `ALLOWED_ORIGINS` | localhost | Extra CORS origins, comma-separated |
 | `LOG_LEVEL` | `INFO` | |
 | `DEBUG_ERRORS` | `false` | Return raw exception text to clients. Never enable in production |
 
@@ -115,13 +115,27 @@ python -m pytest tests/ -v
 The audio-encode tests need `ffmpeg` on PATH and skip cleanly without it.
 Everything else runs anywhere.
 
-## Deployment
+## This app is not deployed
 
-`render.yaml` defines the service. The build compiles the frontend and serves it
-from the same FastAPI process, so there is one service and no CORS in
-production.
+It runs on your machine, on purpose. A public URL would leave the Gemini and TTS
+keys reachable by anyone who found it, and the bill lands on whoever owns those
+keys — being the only intended user does not make the URL private. `render.yaml`
+therefore publishes only the separate `spectrum-rights` static site.
 
-One thing to know: **the host filesystem is ephemeral.** Rendered audio does not
-survive a deploy or restart. It is treated as a cache — every file carries a TTL
-and a janitor prunes by age and total size. If sessions ever need to be durable,
-that is the piece to move to object storage; `storage.py` is the seam.
+To run it as a normal app rather than in dev mode, build the frontend once and
+let the backend serve it:
+
+```bash
+cd frontend && npm run build
+cd ../backend && python main.py     # http://localhost:8888
+```
+
+Rebuild the frontend only when its source changes.
+
+If you ever do put this behind a public URL, three things need attention first:
+the rate limits in `config.py` are sized as a runaway guard rather than a
+defence, there is no authentication at all, and `ALLOWED_ORIGINS` needs the real
+origin.
+
+Rendered audio is a cache either way — every file carries a TTL and the janitor
+prunes by age and total size, so the directory cannot grow without bound.

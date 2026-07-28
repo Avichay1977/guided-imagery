@@ -134,14 +134,21 @@ AUDIO_JANITOR_INTERVAL_MINUTES = _env_int("AUDIO_JANITOR_INTERVAL_MINUTES", 30, 
 
 # ── Rate limiting ─────────────────────────────────────────────────
 
-# Per-client sliding windows. Generation is the expensive path (one Gemini call
-# plus N TTS calls), so it gets a much tighter budget than the read endpoints.
-RATE_LIMIT_SESSION = os.getenv("RATE_LIMIT_SESSION", "5/hour")
-RATE_LIMIT_TRANSLATE = os.getenv("RATE_LIMIT_TRANSLATE", "20/hour")
-RATE_LIMIT_YOUTUBE = os.getenv("RATE_LIMIT_YOUTUBE", "10/hour")
-# Remixing costs one overlay and one encode, no model or TTS calls at all, so it
-# can be far more generous than generation.
-RATE_LIMIT_REMIX = os.getenv("RATE_LIMIT_REMIX", "60/hour")
+# Per-client sliding windows.
+#
+# This is a personal tool running on localhost, so these are not sized to hold
+# off an attacker — they are a runaway guard. A loop that starts firing requests
+# would otherwise spend real money against the Gemini and TTS accounts before
+# anyone noticed. The numbers are set high enough that ordinary use never
+# reaches them: an evening of trying out a dozen different phrasings is fine.
+#
+# Tighten them if this is ever exposed on a public URL, where the first line of
+# defence has to be the limit rather than the fact that only you can reach it.
+RATE_LIMIT_SESSION = os.getenv("RATE_LIMIT_SESSION", "60/hour")
+RATE_LIMIT_TRANSLATE = os.getenv("RATE_LIMIT_TRANSLATE", "120/hour")
+RATE_LIMIT_YOUTUBE = os.getenv("RATE_LIMIT_YOUTUBE", "60/hour")
+# Remixing costs one overlay and one encode, no model or TTS calls at all.
+RATE_LIMIT_REMIX = os.getenv("RATE_LIMIT_REMIX", "240/hour")
 
 # Backstop against the per-client limit being sidestepped by spoofed forwarding
 # headers: a hard ceiling on generations running at once, process-wide.
@@ -154,10 +161,13 @@ TRUSTED_PROXY_HOPS = _env_int("TRUSTED_PROXY_HOPS", 1, lo=0)
 
 # ── CORS ──────────────────────────────────────────────────────────
 
+# Local development only. The app is not deployed to a public URL; if that ever
+# changes, add the origin through ALLOWED_ORIGINS rather than hardcoding it.
 _DEFAULT_ORIGINS = [
     "http://localhost:5173",
     "http://localhost:3000",
-    "https://guided-imagery.onrender.com",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:8888",
 ]
 _extra_origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
 if os.getenv("RENDER_EXTERNAL_URL"):
