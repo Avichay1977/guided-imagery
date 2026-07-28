@@ -42,13 +42,13 @@ import storage
 from audio_mix import build_ambience
 from config import (
     BELL_CUE_OFFSET_MS,
+    DEFAULT_PACE,
     ELEVEN_API_KEY,
     ELEVEN_VOICE_ID,
     OUTPUT_BITRATE,
     OUTPUT_CHANNELS,
     OUTPUT_SAMPLE_RATE,
     OUTPUT_SAMPLE_WIDTH,
-    PAUSE_DURATIONS,
     TTS_CONCURRENCY,
     TTS_ENGINE,
     TTS_MAX_ATTEMPTS,
@@ -58,6 +58,8 @@ from config import (
     TTS_VOICE_SETTINGS,
     VOICE_PEAK_CEILING_DBFS,
     VOICE_TARGET_DBFS,
+    pace_preset,
+    pause_durations_for,
 )
 from nikud_service import add_nikud_to_segment
 
@@ -74,12 +76,13 @@ EDGE_VOICES = {
     "en": "en-US-AndrewMultilingualNeural",
 }
 
-# Prosody per language — tuned for calm, meditative delivery.
-#   Hebrew: slower rate + lower pitch + softer volume for intimate feel
-#   English: similar but slightly less aggressive
+# Pitch and volume per language — tuned for calm, meditative delivery.
+# The speaking rate is not fixed here: it comes from the session's pace setting,
+# because how fast the voice should speak is a property of who is listening, not
+# of the language.
 EDGE_PROSODY = {
-    "he": {"rate": "-35%", "pitch": "-15Hz", "volume": "-10%"},
-    "en": {"rate": "-30%", "pitch": "-10Hz", "volume": "-8%"},
+    "he": {"pitch": "-15Hz", "volume": "-10%"},
+    "en": {"pitch": "-10Hz", "volume": "-8%"},
 }
 
 
@@ -112,15 +115,18 @@ def _get_elevenlabs_client():
     return ElevenLabs(api_key=ELEVEN_API_KEY)
 
 
-def split_script_on_pauses(script: str) -> list[dict]:
+def split_script_on_pauses(script: str, pace: str = DEFAULT_PACE) -> list[dict]:
     """
     Split a script into alternating text and pause segments.
 
     Pause segments keep their marker so the caller can tell a structural pause
-    from a breath when deciding where bells ring.
+    from a breath when deciding where bells ring. Their length follows the
+    session pace: a silence that is restful at a slow pace is dead air at a
+    brisk one.
     """
     segments = []
     last_end = 0
+    durations = pause_durations_for(pace)
 
     for match in PAUSE_PATTERN.finditer(script):
         text_before = script[last_end:match.start()].strip()
@@ -131,7 +137,7 @@ def split_script_on_pauses(script: str) -> list[dict]:
         segments.append({
             "type": "pause",
             "marker": marker,
-            "duration_ms": PAUSE_DURATIONS.get(marker, 3000),
+            "duration_ms": durations.get(marker, durations["[pause]"]),
         })
 
         last_end = match.end()
@@ -188,16 +194,17 @@ def _tts_edge_blocking(audio_path: str) -> AudioSegment:
     return _normalize(AudioSegment.from_mp3(audio_path))
 
 
-async def _tts_edge(text: str, language: str) -> AudioSegment:
+async def _tts_edge(text: str, language: str, pace: str = DEFAULT_PACE) -> AudioSegment:
     text = await asyncio.to_thread(_prepare_text, text, language)
 
     voice = EDGE_VOICES.get(language, EDGE_VOICES["en"])
     prosody = EDGE_PROSODY.get(language, EDGE_PROSODY["en"])
+    rate = pace_preset(pace)["rate"].get(language, pace_preset(pace)["rate"]["en"])
 
     communicate = edge_tts.Communicate(
         text=text,
         voice=voice,
-        rate=prosody["rate"],
+        rate=rate,
         pitch=prosody["pitch"],
         volume=prosody.get("volume", "+0%"),
     )
@@ -240,7 +247,9 @@ def _is_quota_error(exc: Exception) -> bool:
     return any(token in message for token in ("quota", "401", "429", "unauthorized"))
 
 
-async def _synthesize(text: str, language: str, state: _EngineState) -> AudioSegment:
+async def _synthesize(
+    text: str, language: str, state: _EngineState, pace: str = DEFAULT_PACE
+) -> AudioSegment:
     """Synthesize one segment, downgrading the whole session on a quota error."""
     if state.engine == "elevenlabs":
         try:
@@ -249,10 +258,12 @@ async def _synthesize(text: str, language: str, state: _EngineState) -> AudioSeg
             if not _is_quota_error(exc):
                 raise
             state.downgrade(str(exc)[:200])
-    return await _tts_edge(text, language)
+    return await _tts_edge(text, language, pace)
 
 
-async def _synthesize_with_retry(text: str, language: str, state: _EngineState) -> AudioSegment:
+async def _synthesize_with_retry(
+    text: str, language: str, state: _EngineState, pace: str = DEFAULT_PACE
+) -> AudioSegment:
     """
     Retry a segment before letting it sink the whole render.
 
@@ -265,7 +276,7 @@ async def _synthesize_with_retry(text: str, language: str, state: _EngineState) 
     last_error: Exception | None = None
     for attempt in range(TTS_MAX_ATTEMPTS):
         try:
-            return await _synthesize(text, language, state)
+            return await _synthesize(text, language, state, pace)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -472,6 +483,7 @@ async def generate_audio(
     bells_volume: int = 50,
     music_volume: int = 35,
     language: str | None = None,
+    pace: str = DEFAULT_PACE,
 ) -> dict:
     """
     Render a script to a mixed MP3.
@@ -489,7 +501,7 @@ async def generate_audio(
     """
     language = language or _detect_language(script)
     state = _EngineState(TTS_ENGINE)
-    segments = split_script_on_pauses(script)
+    segments = split_script_on_pauses(script, pace)
 
     text_indices = [i for i, s in enumerate(segments) if s["type"] == "text"]
     if not text_indices:
@@ -506,7 +518,9 @@ async def generate_audio(
     async def synthesize_one(index: int) -> tuple[int, AudioSegment]:
         nonlocal completed
         async with semaphore:
-            audio = await _synthesize_with_retry(segments[index]["content"], language, state)
+            audio = await _synthesize_with_retry(
+                segments[index]["content"], language, state, pace
+            )
         audio = audio.fade_in(50).fade_out(50)
         async with progress_lock:
             completed += 1

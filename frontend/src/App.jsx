@@ -22,7 +22,10 @@ function App() {
     document.documentElement.lang = i18n.language
   }, [i18n, i18n.language])
 
-  const handleGenerate = ({ topic, duration, mode, depth, ageGroup, bellsVolume, musicVolume }) => {
+  const handleGenerate = ({
+    topic, duration, mode, depth, ageGroup, focus, neuroprofile, pace,
+    bellsVolume, musicVolume,
+  }) => {
     setMix({ bells: bellsVolume, music: musicVolume })
     generate({
       topic,
@@ -31,6 +34,9 @@ function App() {
       mode,
       depth,
       ageGroup,
+      focus,
+      neuroprofile,
+      pace,
       bellsVolume,
       musicVolume,
     })

@@ -57,6 +57,52 @@ Only `GOOGLE_API_KEY` is required. Everything else has a working default.
 | `LOG_LEVEL` | `INFO` | |
 | `DEBUG_ERRORS` | `false` | Return raw exception text to clients. Never enable in production |
 
+## Choosing a session
+
+Five things shape the script, and they are independent of each other.
+
+| Setting | What it changes |
+|---|---|
+| **Focus** | The clinical approach — anxiety, panic, sleep, hair pulling and picking, anger, restlessness, social situations, transitions, sensory overload, confidence, pain, grief |
+| **Topic** | Free text. The personal specifics the focus area cannot know |
+| **Age** | 4-7, 8-12, 13-17, adult, older adult — register, sentence length, whether it is a story or a session |
+| **Adapt for** | None, ADHD, autistic, or AuDHD |
+| **Pace** | Very slow to brisk — the voice rate, the silences, and how much the model writes to fill the requested minutes |
+
+`focus_areas.py` holds the guidance for each. It is the file to edit to change
+what a session actually says.
+
+### The neurodivergent adaptations
+
+Standard relaxation scripts carry assumptions that fail often enough to make a
+session useless or unpleasant: that you can picture a beach, that you can feel
+your own heartbeat, that sitting still is restful, that "let go" means something
+concrete. Choosing ADHD, autistic or AuDHD rewrites the script's rules:
+
+- **Nothing is mandatory.** No required eye closure, no required stillness.
+  Fidgeting, rocking and stimming are named as fine, early and explicitly.
+- **Literal language.** Nothing melts, dissolves or floats away. Bodies get
+  heavier, warmer, looser — things that can actually be checked.
+- **No assumed mental imagery.** Every image is offered alongside a sound, a
+  physical pressure or a thought, and not picturing anything is stated to be
+  fine and to change nothing.
+- **No reliance on interoception.** Anchors are things detectable from outside
+  the body — the chair, the floor, the hands, the air — because hunting for a
+  heartbeat you cannot detect is stressful rather than calming.
+- **No "empty your mind"**, and never a request to name a feeling.
+- **Attention profiles get short pauses, not long ones**, and a wandering mind
+  is called normal more than once.
+- **AuDHD keeps the frame predictable and the content moving**, because the two
+  profiles genuinely pull in opposite directions and averaging them serves
+  neither.
+
+Autistic and AuDHD sessions also open with a contract: what this is, how long
+it lasts, what order things happen in, and that stopping at any point is fine.
+
+None of this is treatment. It is a support that sits alongside one — the hair
+pulling guidance in particular is written to complement habit reversal training
+and says so in the prompt itself.
+
 ## How a session is built
 
 1. **Script** — Gemini writes the narration with inline pause markers

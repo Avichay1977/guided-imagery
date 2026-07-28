@@ -21,6 +21,7 @@ from config import (
     ALLOWED_ORIGINS,
     CAPTION_BATCH_SIZE,
     DEBUG_ERRORS,
+    DEFAULT_PACE,
     ELEVEN_API_KEY,
     GEMINI_MODEL,
     GOOGLE_API_KEY,
@@ -33,8 +34,13 @@ from config import (
     RATE_LIMIT_YOUTUBE,
     TTS_ENGINE,
 )
+from focus_areas import DEFAULT_FOCUS, FOCUS_AREAS
 from prompt_template import build_meditation_prompt
 from tts_service import generate_audio
+
+# Built from the catalogue so adding a focus area cannot drift out of sync with
+# what the API will accept.
+FOCUS_PATTERN = "^(" + "|".join(sorted(FOCUS_AREAS)) + ")$"
 
 log = logging.getLogger("guided_imagery")
 
@@ -156,7 +162,15 @@ class SessionRequest(BaseModel):
     language: str = Field(default="he", pattern="^(he|en)$")
     mode: str = Field(default="imagery", pattern="^(imagery|hypnosis)$")
     depth: str = Field(default="standard", pattern="^(light|standard|medium|deep)$")
-    age_group: str = Field(default="adults", pattern="^(children|teens|adults)$")
+    # The three coarse values the API originally took still resolve; the finer
+    # bands exist because a 4-year-old and a 12-year-old need different scripts.
+    age_group: str = Field(
+        default="adult",
+        pattern="^(young_child|child|teen|adult|senior|children|teens|adults)$",
+    )
+    focus: str = Field(default=DEFAULT_FOCUS, pattern=FOCUS_PATTERN)
+    neuroprofile: str = Field(default="none", pattern="^(none|autism|adhd|audhd)$")
+    pace: str = Field(default=DEFAULT_PACE, pattern="^(very_slow|slow|natural|brisk)$")
     bells_volume: int = Field(default=50, ge=0, le=100)
     music_volume: int = Field(default=35, ge=0, le=100)
 
@@ -205,6 +219,9 @@ async def create_session(request: Request, session: SessionRequest):
                 mode=session.mode,
                 depth=session.depth,
                 age_group=session.age_group,
+                focus=session.focus,
+                neuroprofile=session.neuroprofile,
+                pace=session.pace,
             )
 
             response = await get_gemini_client().aio.models.generate_content(
@@ -250,6 +267,7 @@ async def create_session(request: Request, session: SessionRequest):
                     bells_volume=session.bells_volume,
                     music_volume=session.music_volume,
                     language=session.language,
+                    pace=session.pace,
                 )
             )
 
@@ -523,6 +541,8 @@ RULES:
 @app.get("/api/health")
 async def health():
     return {"status": "ok"}
+
+
 
 
 @app.get("/audio/{filename}")

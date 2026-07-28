@@ -8,7 +8,7 @@ export function useSession() {
   const [remixing, setRemixing] = useState(false)
   const abortRef = useRef(null)
 
-  const generate = useCallback(async ({ topic, durationMinutes, language, mode, depth, ageGroup, bellsVolume, musicVolume }) => {
+  const generate = useCallback(async ({ topic, durationMinutes, language, mode, depth, ageGroup, focus, neuroprofile, pace, bellsVolume, musicVolume }) => {
     setState('loading')
     setProgress({ message: '', percent: 0 })
     setError(null)
@@ -27,7 +27,10 @@ export function useSession() {
           language,
           mode: mode || 'imagery',
           depth: depth || 'standard',
-          age_group: ageGroup || 'adults',
+          age_group: ageGroup || 'adult',
+          focus: focus || 'general',
+          neuroprofile: neuroprofile || 'none',
+          pace: pace || 'slow',
           bells_volume: bellsVolume ?? 50,
           music_volume: musicVolume ?? 35,
         }),

@@ -5,7 +5,16 @@ import './SessionForm.css'
 
 const DURATIONS = [3, 5, 10, 15, 20]
 const DEPTH_OPTIONS = ['light', 'medium', 'deep']
-const AGE_OPTIONS = ['children', 'teens', 'adults']
+
+// These ids must match backend/focus_areas.py and config.py. A backend test
+// reads this file's translation keys and fails if the two ever drift apart.
+const AGE_OPTIONS = ['young_child', 'child', 'teen', 'adult', 'senior']
+const FOCUS_OPTIONS = [
+  'general', 'anxiety', 'panic', 'sleep', 'bfrb', 'anger',
+  'focus', 'social', 'transitions', 'sensory', 'confidence', 'pain', 'grief',
+]
+const NEURO_OPTIONS = ['none', 'adhd', 'autism', 'audhd']
+const PACE_OPTIONS = ['very_slow', 'slow', 'natural', 'brisk']
 
 function SessionForm({ onSubmit }) {
   const { t } = useTranslation()
@@ -13,9 +22,18 @@ function SessionForm({ onSubmit }) {
   const [duration, setDuration] = useState(10)
   const [mode, setMode] = useState('imagery')
   const [depth, setDepth] = useState('medium')
-  const [ageGroup, setAgeGroup] = useState('adults')
+  const [ageGroup, setAgeGroup] = useState('adult')
+  const [focus, setFocus] = useState('general')
+  const [neuroprofile, setNeuroprofile] = useState('none')
+  const [pace, setPace] = useState('slow')
   const [bellsVolume, setBellsVolume] = useState(50)
   const [musicVolume, setMusicVolume] = useState(35)
+
+  // A restless listener does better with a moving delivery than with long
+  // silences, so suggest it — without overriding a deliberate choice.
+  const suggestFasterPace =
+    (neuroprofile === 'adhd' || neuroprofile === 'audhd') &&
+    (pace === 'slow' || pace === 'very_slow')
 
   const handleSubmit = (e) => {
     e.preventDefault()
@@ -26,6 +44,9 @@ function SessionForm({ onSubmit }) {
       mode,
       depth: mode === 'hypnosis' ? depth : 'standard',
       ageGroup,
+      focus,
+      neuroprofile,
+      pace,
       bellsVolume,
       musicVolume,
     })
@@ -76,6 +97,22 @@ function SessionForm({ onSubmit }) {
         </div>
       )}
 
+      {/* What the session is working on — gives the model a clinical shape
+          to follow, while the free-text topic below carries the specifics. */}
+      <div className="form-group">
+        <label className="form-label" htmlFor="focus-select">{t('form.focus_label')}</label>
+        <select
+          id="focus-select"
+          className="form-input form-select"
+          value={focus}
+          onChange={(e) => setFocus(e.target.value)}
+        >
+          {FOCUS_OPTIONS.map((f) => (
+            <option key={f} value={f}>{t(`form.focus_${f}`)}</option>
+          ))}
+        </select>
+      </div>
+
       {/* Topic - free prompt */}
       <div className="form-group">
         <label className="form-label">{t('form.topic_label')}</label>
@@ -121,6 +158,46 @@ function SessionForm({ onSubmit }) {
             ))}
           </div>
         </div>
+      </div>
+
+      {/* How the listener's brain works, which changes the script substantially:
+          literal language, no assumed mental imagery, no demand for stillness. */}
+      <div className="form-group">
+        <label className="form-label">{t('form.neuro_label')}</label>
+        <div className="neuro-options">
+          {NEURO_OPTIONS.map((n) => (
+            <button
+              key={n}
+              type="button"
+              className={`age-btn ${neuroprofile === n ? 'active' : ''}`}
+              onClick={() => setNeuroprofile(n)}
+            >
+              {t(`form.neuro_${n}`)}
+            </button>
+          ))}
+        </div>
+        <p className="field-hint">{t('form.neuro_hint')}</p>
+      </div>
+
+      {/* Delivery speed: drives the voice rate, the silences, and how much the
+          model writes to fill the requested minutes. */}
+      <div className="form-group">
+        <label className="form-label">{t('form.pace_label')}</label>
+        <div className="pace-options">
+          {PACE_OPTIONS.map((p) => (
+            <button
+              key={p}
+              type="button"
+              className={`age-btn ${pace === p ? 'active' : ''}`}
+              onClick={() => setPace(p)}
+            >
+              {t(`form.pace_${p}`)}
+            </button>
+          ))}
+        </div>
+        {suggestFasterPace && (
+          <p className="field-hint field-hint-suggest">{t('form.pace_suggest')}</p>
+        )}
       </div>
 
       {/* Ambience: bells ring on the script's pause markers, music bed sits under everything */}

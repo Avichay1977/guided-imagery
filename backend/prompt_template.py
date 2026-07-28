@@ -9,7 +9,12 @@ Built on evidence from:
 - Neuroscience of functional equivalence (Columbia 2024)
 - VA Whole Health clinical guidelines
 - Elkins Hypnotic Relaxation Therapy protocol
+
+Audience adaptations and clinical targets live in focus_areas.py.
 """
+
+from config import DEFAULT_PACE, pace_preset
+from focus_areas import age_guidance, focus_guidance, neuro_guidance
 
 # ── shared constants ──────────────────────────────────────────────
 
@@ -52,26 +57,53 @@ def _lang_instruction(language: str) -> str:
 
 
 def _age_instruction(age_group: str, language: str) -> str:
-    if age_group == "children":
-        return (
-            "TARGET AUDIENCE: Children ages 6-12.\n"
-            "- Use story-based narrative with a magical helper character (friendly animal or guide)\n"
-            "- Concrete, tangible imagery (no abstract concepts)\n"
-            "- Short sentences (5-10 words)\n"
-            "- Use media metaphors: 'like changing the channel', 'turning down the volume'\n"
-            "- Don't say 'imagine' - just tell the story and let natural absorption happen\n"
-            "- Include a sense of control: 'you hold the magic remote'\n"
-            "- Max 5-10 minutes of content\n"
-            "- Gentle, warm, parental tone\n"
-        )
-    if age_group == "teens":
-        return (
-            "TARGET AUDIENCE: Teenagers 13-18.\n"
-            "- Can use abstract metaphors and self-directed rescripting\n"
-            "- Respect autonomy - more 'you choose' language\n"
-            "- Relatable scenarios (school, social, identity)\n"
-            "- Slightly edgier imagery OK (adventure, space, diving) but always safe\n"
-        )
+    return age_guidance(age_group)
+
+
+def _pace_instruction(pace: str) -> str:
+    """
+    Tell the model how dense to write.
+
+    The pace setting also drives the voice rate and the pause lengths, so the
+    script has to be written to match or the finished audio misses the
+    requested duration.
+    """
+    if pace in ("natural", "brisk"):
+        return """
+DELIVERY PACE — MOVING:
+- This will be spoken at a normal conversational speed with short silences.
+- Keep the words nearly continuous. Use [short_pause] as the default marker.
+- Use [long_pause] sparingly — at most twice in the whole script.
+- Vary sentence length so the rhythm does not flatten into a monotone.
+"""
+    if pace == "very_slow":
+        return """
+DELIVERY PACE — VERY SLOW:
+- This will be spoken very slowly with long silences between phrases.
+- Write fewer words and let each one carry weight.
+- Use [long_pause] generously; silence is doing much of the work here.
+- Short, simple sentences. Nothing that needs holding in mind across a pause.
+"""
+    return ""
+
+
+def _session_frame(duration_minutes: int, neuroprofile: str) -> str:
+    """
+    An explicit contract at the top of the session.
+
+    Knowing what is about to happen and exactly how long it lasts removes a
+    whole category of anxiety, and it matters most for the listeners who are
+    least comfortable with surprises.
+    """
+    if neuroprofile in ("autism", "audhd"):
+        return f"""
+OPENING CONTRACT (required, first 20-30 words):
+Before anything else, say plainly: what this recording is for, that it lasts
+about {duration_minutes} minutes, and roughly what order things will happen in.
+Then state that they can sit or lie however they like, keep their eyes open or
+closed, move or fidget freely, and stop at any point. Say it once, simply, and
+do not repeat it later.
+"""
     return ""
 
 
@@ -83,9 +115,12 @@ def build_imagery_prompt(
     language: str,
     age_group: str = "adults",
     depth: str = "standard",
+    focus: str = "general",
+    neuroprofile: str = "none",
+    pace: str = DEFAULT_PACE,
 ) -> str:
     lang_name = "Hebrew" if language == "he" else "English"
-    target_words = duration_minutes * 80
+    target_words = int(duration_minutes * pace_preset(pace)["words_per_minute"])
 
     prompt = f"""You are an expert clinical guided imagery therapist trained in evidence-based
 visualization therapy, Ericksonian language patterns, and neuroscience-informed relaxation.
@@ -93,7 +128,11 @@ visualization therapy, Ericksonian language patterns, and neuroscience-informed 
 Write a complete guided imagery script in {lang_name} for: "{topic}".
 Duration: {duration_minutes} minutes (~{target_words} words excluding pause markers).
 
+{_session_frame(duration_minutes, neuroprofile)}
+
 {_age_instruction(age_group, language)}
+
+{focus_guidance(focus)}
 
 ══════════════════════════════════════════════
 STRUCTURE — 5-Phase Evidence-Based Model
@@ -187,6 +226,10 @@ PHASE 5 — GENTLE RETURN (10% of script):
 
 {STYLE_RULES}
 
+{_pace_instruction(pace)}
+
+{neuro_guidance(neuroprofile)}
+
 {_lang_instruction(language)}
 
 Output ONLY the spoken script with pause markers.
@@ -204,9 +247,13 @@ def build_hypnosis_prompt(
     language: str,
     depth: str = "deep",
     age_group: str = "adults",
+    focus: str = "general",
+    neuroprofile: str = "none",
+    pace: str = DEFAULT_PACE,
 ) -> str:
     lang_name = "Hebrew" if language == "he" else "English"
-    target_words = duration_minutes * 70  # slower pace for hypnosis
+    # Hypnosis is delivered a shade slower than imagery at any given pace.
+    target_words = int(duration_minutes * pace_preset(pace)["words_per_minute"] * 0.875)
 
     depth_instructions = ""
     if depth == "light":
@@ -234,7 +281,11 @@ Write a complete self-hypnosis session script in {lang_name} for: "{topic}".
 Duration: {duration_minutes} minutes (~{target_words} words excluding pause markers).
 {depth_instructions}
 
+{_session_frame(duration_minutes, neuroprofile)}
+
 {_age_instruction(age_group, language)}
+
+{focus_guidance(focus)}
 
 ══════════════════════════════════════════════
 STRUCTURE — 8-Phase Clinical Hypnosis Model
@@ -344,6 +395,10 @@ ADDITIONAL HYPNOTIC LANGUAGE REQUIREMENTS:
 - Use confusion followed by clarity: complex sentence → simple clear suggestion
 - Include ideomotor suggestions: "perhaps a finger wants to twitch or lift... that's your deeper mind responding"
 
+{_pace_instruction(pace)}
+
+{neuro_guidance(neuroprofile)}
+
 {_lang_instruction(language)}
 
 Output ONLY the spoken script with pause markers.
@@ -362,7 +417,14 @@ def build_meditation_prompt(
     mode: str = "imagery",
     depth: str = "standard",
     age_group: str = "adults",
+    focus: str = "general",
+    neuroprofile: str = "none",
+    pace: str = DEFAULT_PACE,
 ) -> str:
     if mode == "hypnosis":
-        return build_hypnosis_prompt(topic, duration_minutes, language, depth, age_group)
-    return build_imagery_prompt(topic, duration_minutes, language, age_group, depth)
+        return build_hypnosis_prompt(
+            topic, duration_minutes, language, depth, age_group, focus, neuroprofile, pace
+        )
+    return build_imagery_prompt(
+        topic, duration_minutes, language, age_group, depth, focus, neuroprofile, pace
+    )

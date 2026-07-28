@@ -23,7 +23,7 @@ def stub_tts(monkeypatch):
     """Every spoken segment becomes a fixed-length silence, so timings are exact."""
     spoken = []
 
-    async def fake_synthesize(text, language, state):
+    async def fake_synthesize(text, language, state, pace=None):
         spoken.append(text)
         await asyncio.sleep(0)
         return AudioSegment.silent(duration=SPEECH_MS, frame_rate=OUTPUT_SAMPLE_RATE)
@@ -115,7 +115,7 @@ class TestConcurrency:
         in_flight = 0
         peak = 0
 
-        async def fake_synthesize(text, language, state):
+        async def fake_synthesize(text, language, state, pace=None):
             nonlocal in_flight, peak
             in_flight += 1
             peak = max(peak, in_flight)
@@ -133,7 +133,7 @@ class TestConcurrency:
 
     @pytest.mark.asyncio
     async def test_parallel_run_is_faster_than_serial_would_be(self, monkeypatch, captured):
-        async def slow_synthesize(text, language, state):
+        async def slow_synthesize(text, language, state, pace=None):
             await asyncio.sleep(0.05)
             return AudioSegment.silent(duration=SPEECH_MS, frame_rate=OUTPUT_SAMPLE_RATE)
 
@@ -224,7 +224,7 @@ class TestRetry:
     ):
         attempts = []
 
-        async def flaky(text, language, state):
+        async def flaky(text, language, state, pace=None):
             attempts.append(text)
             if len(attempts) == 1:
                 raise ConnectionError("connection reset")
@@ -242,7 +242,7 @@ class TestRetry:
     ):
         attempts = []
 
-        async def always_fails(text, language, state):
+        async def always_fails(text, language, state, pace=None):
             attempts.append(text)
             raise ConnectionError("connection reset")
 
@@ -259,7 +259,7 @@ class TestRetry:
         # against a wall.
         attempts = []
 
-        async def quota_exhausted(text, language, state):
+        async def quota_exhausted(text, language, state, pace=None):
             attempts.append(text)
             raise RuntimeError("429 quota exceeded")
 
@@ -274,7 +274,7 @@ class TestRetry:
     async def test_cancellation_is_not_swallowed_by_the_retry_loop(
         self, monkeypatch, captured
     ):
-        async def cancelled(text, language, state):
+        async def cancelled(text, language, state, pace=None):
             raise asyncio.CancelledError()
 
         monkeypatch.setattr(tts_service, "_synthesize", cancelled)
@@ -297,7 +297,7 @@ class TestFailureModes:
 
     @pytest.mark.asyncio
     async def test_a_failing_segment_propagates(self, monkeypatch, captured):
-        async def boom(text, language, state):
+        async def boom(text, language, state, pace=None):
             raise RuntimeError("tts exploded")
 
         monkeypatch.setattr(tts_service, "_synthesize", boom)

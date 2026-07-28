@@ -94,13 +94,42 @@ OUTPUT_CHANNELS = 1
 OUTPUT_SAMPLE_WIDTH = 2
 OUTPUT_BITRATE = "128k"
 
-# Pause durations in milliseconds
+# Pause durations in milliseconds, at the default pace.
 PAUSE_DURATIONS = {
     "[pause]": 3000,
     "[short_pause]": 1500,
     "[long_pause]": 5000,
     "[breath]": 4000,
 }
+
+# Delivery speed, chosen per session.
+#
+# One setting drives three things that have to agree: how fast the voice speaks,
+# how long the silences are, and how much text the model writes to fill the
+# requested minutes. Changing the voice rate alone would make a 10-minute
+# session come out at six.
+#
+# The slower end suits sleep and deep relaxation. The faster end exists because
+# long silences are not restful for everyone — for a restless or ADHD listener
+# they are where attention leaves and frustration arrives, and a brisker,
+# more continuous delivery holds far better than a drifting one.
+PACE_PRESETS = {
+    "very_slow": {"rate": {"he": "-45%", "en": "-40%"}, "pause_scale": 1.30, "words_per_minute": 62},
+    "slow":      {"rate": {"he": "-35%", "en": "-30%"}, "pause_scale": 1.00, "words_per_minute": 80},
+    "natural":   {"rate": {"he": "-20%", "en": "-15%"}, "pause_scale": 0.72, "words_per_minute": 102},
+    "brisk":     {"rate": {"he": "-8%",  "en": "-5%"},  "pause_scale": 0.55, "words_per_minute": 124},
+}
+DEFAULT_PACE = "slow"
+
+
+def pace_preset(pace: str) -> dict:
+    return PACE_PRESETS.get(pace, PACE_PRESETS[DEFAULT_PACE])
+
+
+def pause_durations_for(pace: str) -> dict:
+    """Pause table scaled to the chosen pace, with a floor so nothing vanishes."""
+    scale = pace_preset(pace)["pause_scale"]
+    return {marker: max(400, int(ms * scale)) for marker, ms in PAUSE_DURATIONS.items()}
 
 # ── Ambience (bells + music bed) ──────────────────────────────────
 

@@ -41,7 +41,7 @@ def client(tmp_path, monkeypatch):
         lambda: type("C", (), {"aio": type("A", (), {"models": Models()})()})(),
     )
 
-    async def fake_segment(text, language, state):
+    async def fake_segment(text, language, state, pace=None):
         return AudioSegment.silent(duration=SPEECH_MS, frame_rate=OUTPUT_SAMPLE_RATE)
 
     monkeypatch.setattr(tts_service, "_synthesize", fake_segment)
