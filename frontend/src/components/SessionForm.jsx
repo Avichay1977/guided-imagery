@@ -125,38 +125,37 @@ function SessionForm({ onSubmit }) {
         />
       </div>
 
-      {/* Duration + Age Group in one row */}
-      <div className="form-row">
-        <div className="form-group">
-          <label className="form-label">{t('form.duration_label')}</label>
-          <div className="duration-options">
-            {DURATIONS.map((d) => (
-              <button
-                key={d}
-                type="button"
-                className={`duration-btn ${duration === d ? 'active' : ''}`}
-                onClick={() => setDuration(d)}
-              >
-                {d} {t('form.minutes')}
-              </button>
-            ))}
-          </div>
+      {/* Duration and age each get a full row: both now offer five choices,
+          which do not fit side by side without wrapping awkwardly. */}
+      <div className="form-group">
+        <label className="form-label">{t('form.duration_label')}</label>
+        <div className="duration-options">
+          {DURATIONS.map((d) => (
+            <button
+              key={d}
+              type="button"
+              className={`duration-btn ${duration === d ? 'active' : ''}`}
+              onClick={() => setDuration(d)}
+            >
+              {d} {t('form.minutes')}
+            </button>
+          ))}
         </div>
+      </div>
 
-        <div className="form-group">
-          <label className="form-label">{t('form.age_label')}</label>
-          <div className="age-options">
-            {AGE_OPTIONS.map((a) => (
-              <button
-                key={a}
-                type="button"
-                className={`age-btn ${ageGroup === a ? 'active' : ''}`}
-                onClick={() => setAgeGroup(a)}
-              >
-                {t(`form.age_${a}`)}
-              </button>
-            ))}
-          </div>
+      <div className="form-group">
+        <label className="form-label">{t('form.age_label')}</label>
+        <div className="age-options">
+          {AGE_OPTIONS.map((a) => (
+            <button
+              key={a}
+              type="button"
+              className={`age-btn ${ageGroup === a ? 'active' : ''}`}
+              onClick={() => setAgeGroup(a)}
+            >
+              {t(`form.age_${a}`)}
+            </button>
+          ))}
         </div>
       </div>
 

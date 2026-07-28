@@ -258,16 +258,15 @@
   }
 }
 
-/* Five age bands sharing a half-width column: let them size to their own
-   content rather than forcing five equal columns into the space. */
+/* Five age bands across a full row */
 .age-options {
-  grid-template-columns: repeat(auto-fit, minmax(46px, 1fr));
-  gap: 0.3rem;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.35rem;
 }
 
 .age-btn {
-  padding: 0.5rem 0.2rem;
-  font-size: 0.76rem;
+  padding: 0.55rem 0.2rem;
+  font-size: 0.8rem;
   white-space: nowrap;
 }
 
