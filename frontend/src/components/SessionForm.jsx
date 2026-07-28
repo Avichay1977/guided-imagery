@@ -26,7 +26,7 @@ function SessionForm({ onSubmit }) {
   const [focus, setFocus] = useState('general')
   const [neuroprofile, setNeuroprofile] = useState('none')
   const [pace, setPace] = useState('slow')
-  const [bellsVolume, setBellsVolume] = useState(50)
+  const [bellsVolume, setBellsVolume] = useState(0)
   const [musicVolume, setMusicVolume] = useState(35)
 
   // A restless listener does better with a moving delivery than with long

@@ -31,7 +31,7 @@ export function useSession() {
           focus: focus || 'general',
           neuroprofile: neuroprofile || 'none',
           pace: pace || 'slow',
-          bells_volume: bellsVolume ?? 50,
+          bells_volume: bellsVolume ?? 0,
           music_volume: musicVolume ?? 35,
         }),
         signal: controller.signal,

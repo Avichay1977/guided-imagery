@@ -15,7 +15,7 @@ function App() {
   const { state, progress, result, error, remixing, generate, remix, reset } = useSession()
   const [page, setPage] = useState('home') // home | youtube | math
   // Remembered so the remix panel opens on the settings this session was made with.
-  const [mix, setMix] = useState({ bells: 50, music: 35 })
+  const [mix, setMix] = useState({ bells: 0, music: 35 })
 
   useEffect(() => {
     document.documentElement.dir = i18n.dir()

@@ -171,7 +171,9 @@ class SessionRequest(BaseModel):
     focus: str = Field(default=DEFAULT_FOCUS, pattern=FOCUS_PATTERN)
     neuroprofile: str = Field(default="none", pattern="^(none|autism|adhd|audhd)$")
     pace: str = Field(default=DEFAULT_PACE, pattern="^(very_slow|slow|natural|brisk)$")
-    bells_volume: int = Field(default=50, ge=0, le=100)
+    # Bells default off. They mark transitions well, but a chime is a sudden
+    # sensory event, which is exactly what some listeners do not want.
+    bells_volume: int = Field(default=0, ge=0, le=100)
     music_volume: int = Field(default=35, ge=0, le=100)
 
 
@@ -314,7 +316,7 @@ async def create_session(request: Request, session: SessionRequest):
 
 class RemixRequest(BaseModel):
     session_id: str = Field(..., min_length=12, max_length=12, pattern="^[a-f0-9]{12}$")
-    bells_volume: int = Field(default=50, ge=0, le=100)
+    bells_volume: int = Field(default=0, ge=0, le=100)
     music_volume: int = Field(default=35, ge=0, le=100)
 
 

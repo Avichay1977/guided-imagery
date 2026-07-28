@@ -480,7 +480,7 @@ async def remix(session_id: str, bells_volume: int, music_volume: int) -> str:
 async def generate_audio(
     script: str,
     on_progress=None,
-    bells_volume: int = 50,
+    bells_volume: int = 0,
     music_volume: int = 35,
     language: str | None = None,
     pace: str = DEFAULT_PACE,

@@ -43,6 +43,41 @@ class TestSessionValidation:
         assert response.status_code == 422
 
 
+class TestAmbienceDefaults:
+    """
+    Bells are off unless asked for. A chime is a sudden sensory event, and the
+    person this runs for does not want one.
+    """
+
+    def test_bells_default_to_off(self):
+        from main import SessionRequest
+
+        assert SessionRequest(topic="calm", duration_minutes=5).bells_volume == 0
+
+    def test_the_music_bed_still_defaults_on(self):
+        from main import SessionRequest
+
+        assert SessionRequest(topic="calm", duration_minutes=5).music_volume > 0
+
+    def test_remix_also_defaults_bells_off(self):
+        from main import RemixRequest
+
+        assert RemixRequest(session_id="abcdef123456").bells_volume == 0
+
+    def test_bells_can_still_be_asked_for(self):
+        from main import SessionRequest
+
+        assert SessionRequest(topic="calm", duration_minutes=5, bells_volume=70).bells_volume == 70
+
+    def test_the_render_path_defaults_to_no_bells(self):
+        import inspect
+
+        import tts_service
+
+        signature = inspect.signature(tts_service.generate_audio)
+        assert signature.parameters["bells_volume"].default == 0
+
+
 class TestTranslate:
     def test_same_language_returns_input_untouched(self, client):
         # Short-circuits before any model call.
