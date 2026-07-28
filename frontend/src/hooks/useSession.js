@@ -5,6 +5,7 @@ export function useSession() {
   const [progress, setProgress] = useState({ message: '', percent: 0 })
   const [result, setResult] = useState(null)
   const [error, setError] = useState(null)
+  const [remixing, setRemixing] = useState(false)
   const abortRef = useRef(null)
 
   const generate = useCallback(async ({ topic, durationMinutes, language, mode, depth, ageGroup, bellsVolume, musicVolume }) => {
@@ -81,6 +82,33 @@ export function useSession() {
     }
   }, [])
 
+  // Re-mix a finished session at a new ambience setting. The narration is kept
+  // server-side, so this never regenerates the script or the narration —
+  // it swaps the audio in place and leaves the rest of the result alone.
+  const remix = useCallback(async ({ sessionId, bellsVolume, musicVolume }) => {
+    setRemixing(true)
+    try {
+      const response = await fetch('/api/remix', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: sessionId,
+          bells_volume: bellsVolume,
+          music_volume: musicVolume,
+        }),
+      })
+      if (!response.ok) return false
+
+      const data = await response.json()
+      setResult((prev) => (prev ? { ...prev, audio_url: data.audio_url } : prev))
+      return true
+    } catch {
+      return false
+    } finally {
+      setRemixing(false)
+    }
+  }, [])
+
   const reset = useCallback(() => {
     if (abortRef.current) {
       abortRef.current.abort()
@@ -89,7 +117,8 @@ export function useSession() {
     setProgress({ message: '', percent: 0 })
     setResult(null)
     setError(null)
+    setRemixing(false)
   }, [])
 
-  return { state, progress, result, error, generate, reset }
+  return { state, progress, result, error, remixing, generate, remix, reset }
 }

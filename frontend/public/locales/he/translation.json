@@ -26,6 +26,11 @@
     "music_label": "מוזיקת רקע",
     "music_off": "כבוי",
     "music_loud": "חזק",
+    "remix_title": "כוונון האווירה",
+    "remix_apply": "עדכן אודיו",
+    "remix_applying": "מעדכן...",
+    "remix_hint": "הזז מחוון כדי לשנות — ההקלטה נשארת, רק הרקע מתחלף.",
+    "remix_failed": "לא הצלחנו לעדכן את האודיו. נסה שוב.",
     "generate": "התחל מסע",
     "generate_hypnosis": "התחל היפנוזה",
     "generating": "יוצר את המדיטציה שלך..."

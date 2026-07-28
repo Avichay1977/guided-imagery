@@ -46,9 +46,11 @@ Only `GOOGLE_API_KEY` is required. Everything else has a working default.
 | `GEMINI_MODEL` | `gemini-2.5-flash` | |
 | `AUDIO_TTL_HOURS` | `6` | How long a rendered track survives before pruning |
 | `AUDIO_MAX_MB` | `512` | Total size budget for rendered audio |
+| `TTS_MAX_ATTEMPTS` | `3` | Retries per segment before a render is abandoned |
 | `RATE_LIMIT_SESSION` | `5/hour` | Per-client generation budget |
 | `RATE_LIMIT_TRANSLATE` | `20/hour` | |
 | `RATE_LIMIT_YOUTUBE` | `10/hour` | |
+| `RATE_LIMIT_REMIX` | `60/hour` | Remixing costs no model or TTS calls, so it is generous |
 | `MAX_CONCURRENT_GENERATIONS` | `2` | Process-wide ceiling on simultaneous renders |
 | `TRUSTED_PROXY_HOPS` | `1` | Reverse proxies in front of the app; used to read the real client IP |
 | `ALLOWED_ORIGINS` | localhost + Render | Extra CORS origins, comma-separated |
@@ -66,6 +68,22 @@ Only `GOOGLE_API_KEY` is required. Everything else has a working default.
 4. **Ambience** — bells ring at the structural pauses, never mid-sentence, over
    a drone bed. See below.
 5. **Encode** — one MP3, streamed to the client over SSE with live progress.
+
+## Changing the ambience without re-generating
+
+The narration is stored separately from the finished mix, so adjusting the bells
+or the music bed does not mean making a new session. `POST /api/remix` takes a
+`session_id` and new volumes and re-mixes the recording that already exists —
+no Gemini call, no TTS, seconds instead of minutes.
+
+Mix files are named after their inputs (`meditation_<id>b<bells>m<music>.mp3`),
+which makes the whole thing idempotent: asking for a combination that was
+already rendered is a `stat()`, not an encode.
+
+The one cost is that a narration is kept alongside its mixes, roughly doubling
+the storage per session. The janitor accounts for that by pruning in tiers — a
+mix can be rebuilt from its narration in seconds, so mixes are dropped first and
+narrations only if that is not enough.
 
 ## Notes on the audio engine
 

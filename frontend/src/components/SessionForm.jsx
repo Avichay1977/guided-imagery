@@ -1,35 +1,11 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import VolumeSlider from './VolumeSlider'
 import './SessionForm.css'
 
 const DURATIONS = [3, 5, 10, 15, 20]
 const DEPTH_OPTIONS = ['light', 'medium', 'deep']
 const AGE_OPTIONS = ['children', 'teens', 'adults']
-
-function VolumeSlider({ icon, label, offHint, loudHint, value, onChange }) {
-  return (
-    <div className="form-group mix-group">
-      <label className="form-label">
-        <span className="mix-icon">{icon}</span>
-        {label}
-        <span className="mix-value">{value}%</span>
-      </label>
-      <input
-        type="range"
-        className="mix-slider"
-        min="0"
-        max="100"
-        step="5"
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-      />
-      <div className="mix-hints">
-        <span>{offHint}</span>
-        <span>{loudHint}</span>
-      </div>
-    </div>
-  )
-}
 
 function SessionForm({ onSubmit }) {
   const { t } = useTranslation()

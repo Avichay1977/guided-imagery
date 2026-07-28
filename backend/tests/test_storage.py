@@ -77,6 +77,30 @@ class TestPrune:
         assert not oldest.exists()
         assert newest.exists()
 
+    def test_gives_up_mixes_before_narrations(self, audio_root, monkeypatch):
+        # A mix rebuilds from its narration in seconds; a narration only rebuilds
+        # by paying for the script and the whole TTS render again.
+        monkeypatch.setattr(storage, "AUDIO_TTL_HOURS", 999)
+        monkeypatch.setattr(storage, "AUDIO_MAX_MB", 1)
+        voice = write(audio_root / "voice_abcdef123456.mp3", size=600 * 1024, age_hours=5)
+        mix = write(audio_root / "meditation_abcdef123456b50m35.mp3", size=600 * 1024, age_hours=1)
+
+        storage.prune()
+
+        assert voice.exists(), "the irreplaceable artifact should survive"
+        assert not mix.exists(), "the rebuildable one should go first"
+
+    def test_narrations_are_dropped_only_when_mixes_are_not_enough(self, audio_root, monkeypatch):
+        monkeypatch.setattr(storage, "AUDIO_TTL_HOURS", 999)
+        monkeypatch.setattr(storage, "AUDIO_MAX_MB", 1)
+        old_voice = write(audio_root / "voice_aaaaaaaaaaaa.mp3", size=700 * 1024, age_hours=9)
+        new_voice = write(audio_root / "voice_bbbbbbbbbbbb.mp3", size=700 * 1024, age_hours=1)
+
+        storage.prune()
+
+        assert not old_voice.exists()
+        assert new_voice.exists()
+
     def test_leaves_everything_alone_when_within_limits(self, audio_root, monkeypatch):
         monkeypatch.setattr(storage, "AUDIO_TTL_HOURS", 999)
         monkeypatch.setattr(storage, "AUDIO_MAX_MB", 1024)

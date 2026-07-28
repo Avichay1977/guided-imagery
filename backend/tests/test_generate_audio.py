@@ -11,6 +11,7 @@ import asyncio
 import pytest
 from pydub import AudioSegment
 
+import storage
 import tts_service
 from config import BELL_CUE_OFFSET_MS, OUTPUT_SAMPLE_RATE, TTS_CONCURRENCY
 
@@ -36,16 +37,18 @@ def captured(monkeypatch):
     """Intercept the encode step and keep what it was handed."""
     record = {}
 
-    def fake_assemble(parts, cue_positions_ms, bells_volume, music_volume, filepath):
+    def fake_finalize(parts, cue_positions_ms, bells_volume, music_volume, session_id, language):
         record.update(
             parts=parts,
             cues=cue_positions_ms,
             bells=bells_volume,
             music=music_volume,
-            filepath=filepath,
+            session_id=session_id,
+            language=language,
         )
+        return storage.mix_filename(session_id, bells_volume, music_volume)
 
-    monkeypatch.setattr(tts_service, "_assemble", fake_assemble)
+    monkeypatch.setattr(tts_service, "_finalize", fake_finalize)
     return record
 
 
@@ -187,12 +190,98 @@ class TestVolumesAndOutput:
 
     @pytest.mark.asyncio
     async def test_returns_a_filename_the_audio_route_will_accept(self, stub_tts, captured):
-        import storage
+        result = await run("a [pause] b")
+        assert storage._SAFE_NAME.match(result["filename"])
 
-        filename = await run("a [pause] b")
-        assert filename.endswith(".mp3")
-        assert storage._SAFE_NAME.match(filename)
-        assert captured["filepath"].endswith(filename)
+    @pytest.mark.asyncio
+    async def test_returns_a_session_id_that_remix_will_accept(self, stub_tts, captured):
+        result = await run("a [pause] b")
+        assert storage.is_session_id(result["session_id"])
+        assert result["session_id"] == captured["session_id"]
+
+    @pytest.mark.asyncio
+    async def test_the_mix_filename_encodes_the_ambience_setting(self, stub_tts, captured):
+        # This is what makes a repeated remix free — the name is derived from
+        # its inputs, so an existing file is a cache hit.
+        result = await run("a [pause] b", bells_volume=70, music_volume=20)
+        assert result["filename"] == storage.mix_filename(result["session_id"], 70, 20)
+
+    @pytest.mark.asyncio
+    async def test_language_is_handed_to_the_encoder(self, stub_tts, captured):
+        await run("a [pause] b")
+        assert captured["language"] == "en"
+
+
+class TestRetry:
+    """
+    A render is one Gemini call plus N TTS calls. Losing all of it to a single
+    dropped connection is the most expensive failure mode available.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_transient_failure_is_retried_and_the_render_survives(
+        self, monkeypatch, captured
+    ):
+        attempts = []
+
+        async def flaky(text, language, state):
+            attempts.append(text)
+            if len(attempts) == 1:
+                raise ConnectionError("connection reset")
+            return AudioSegment.silent(duration=SPEECH_MS, frame_rate=OUTPUT_SAMPLE_RATE)
+
+        monkeypatch.setattr(tts_service, "_synthesize", flaky)
+        monkeypatch.setattr(tts_service, "TTS_RETRY_BASE_DELAY", 0)
+
+        assert await run("a single passage")
+        assert len(attempts) == 2
+
+    @pytest.mark.asyncio
+    async def test_it_gives_up_after_the_configured_number_of_attempts(
+        self, monkeypatch, captured
+    ):
+        attempts = []
+
+        async def always_fails(text, language, state):
+            attempts.append(text)
+            raise ConnectionError("connection reset")
+
+        monkeypatch.setattr(tts_service, "_synthesize", always_fails)
+        monkeypatch.setattr(tts_service, "TTS_RETRY_BASE_DELAY", 0)
+
+        with pytest.raises(ConnectionError):
+            await run("a single passage")
+        assert len(attempts) == tts_service.TTS_MAX_ATTEMPTS
+
+    @pytest.mark.asyncio
+    async def test_quota_errors_are_not_retried(self, monkeypatch, captured):
+        # Quota is handled by switching engines; retrying just burns time
+        # against a wall.
+        attempts = []
+
+        async def quota_exhausted(text, language, state):
+            attempts.append(text)
+            raise RuntimeError("429 quota exceeded")
+
+        monkeypatch.setattr(tts_service, "_synthesize", quota_exhausted)
+        monkeypatch.setattr(tts_service, "TTS_RETRY_BASE_DELAY", 0)
+
+        with pytest.raises(RuntimeError):
+            await run("a single passage")
+        assert len(attempts) == 1
+
+    @pytest.mark.asyncio
+    async def test_cancellation_is_not_swallowed_by_the_retry_loop(
+        self, monkeypatch, captured
+    ):
+        async def cancelled(text, language, state):
+            raise asyncio.CancelledError()
+
+        monkeypatch.setattr(tts_service, "_synthesize", cancelled)
+        monkeypatch.setattr(tts_service, "TTS_RETRY_BASE_DELAY", 0)
+
+        with pytest.raises(asyncio.CancelledError):
+            await run("a single passage")
 
 
 class TestFailureModes:

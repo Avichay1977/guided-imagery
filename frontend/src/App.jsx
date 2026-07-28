@@ -4,6 +4,7 @@ import { useSession } from './hooks/useSession'
 import SessionForm from './components/SessionForm'
 import ProgressLoader from './components/ProgressLoader'
 import AudioPlayer from './components/AudioPlayer'
+import AmbienceRemix from './components/AmbienceRemix'
 import ScriptDisplay from './components/ScriptDisplay'
 import LanguageToggle from './components/LanguageToggle'
 import YouTubeTranslator from './components/YouTubeTranslator'
@@ -11,8 +12,10 @@ import MathCanvas from './components/MathCanvas/MathCanvas'
 
 function App() {
   const { t, i18n } = useTranslation()
-  const { state, progress, result, error, generate, reset } = useSession()
+  const { state, progress, result, error, remixing, generate, remix, reset } = useSession()
   const [page, setPage] = useState('home') // home | youtube | math
+  // Remembered so the remix panel opens on the settings this session was made with.
+  const [mix, setMix] = useState({ bells: 50, music: 35 })
 
   useEffect(() => {
     document.documentElement.dir = i18n.dir()
@@ -20,6 +23,7 @@ function App() {
   }, [i18n, i18n.language])
 
   const handleGenerate = ({ topic, duration, mode, depth, ageGroup, bellsVolume, musicVolume }) => {
+    setMix({ bells: bellsVolume, music: musicVolume })
     generate({
       topic,
       durationMinutes: duration,
@@ -89,7 +93,17 @@ function App() {
 
             {state === 'complete' && result && (
               <div className="result-section">
-                <AudioPlayer audioUrl={result.audio_url} />
+                {/* Keyed on the URL so a remix loads the new mix from the start */}
+                <AudioPlayer key={result.audio_url} audioUrl={result.audio_url} />
+                {result.session_id && (
+                  <AmbienceRemix
+                    sessionId={result.session_id}
+                    initialBells={mix.bells}
+                    initialMusic={mix.music}
+                    onRemix={remix}
+                    busy={remixing}
+                  />
+                )}
                 <ScriptDisplay script={result.script} />
                 <button className="btn btn-secondary" onClick={reset}>
                   {t('player.new_session')}

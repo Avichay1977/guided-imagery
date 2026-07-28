@@ -26,6 +26,11 @@
     "music_label": "Music Bed",
     "music_off": "Off",
     "music_loud": "Loud",
+    "remix_title": "Adjust the ambience",
+    "remix_apply": "Update audio",
+    "remix_applying": "Updating...",
+    "remix_hint": "Move a slider to remix — the narration stays, only the background changes.",
+    "remix_failed": "Could not update the audio. Try again.",
     "generate": "Begin Journey",
     "generate_hypnosis": "Begin Hypnosis",
     "generating": "Creating your meditation..."

@@ -19,9 +19,11 @@ assembly and handed to the ambience builder, so bells ring in the silences.
 
 import asyncio
 import io
+import json
 import logging
 import os
 import re
+import subprocess
 import tempfile
 
 # Configure ffmpeg + ffprobe paths before importing pydub
@@ -47,9 +49,13 @@ from config import (
     PAUSE_DURATIONS,
     TTS_CONCURRENCY,
     TTS_ENGINE,
+    TTS_MAX_ATTEMPTS,
     TTS_MODEL,
     TTS_OUTPUT_FORMAT,
+    TTS_RETRY_BASE_DELAY,
     TTS_VOICE_SETTINGS,
+    VOICE_PEAK_CEILING_DBFS,
+    VOICE_TARGET_DBFS,
 )
 from nikud_service import add_nikud_to_segment
 
@@ -244,35 +250,193 @@ async def _synthesize(text: str, language: str, state: _EngineState) -> AudioSeg
     return await _tts_edge(text, language)
 
 
-def _assemble(
+async def _synthesize_with_retry(text: str, language: str, state: _EngineState) -> AudioSegment:
+    """
+    Retry a segment before letting it sink the whole render.
+
+    A session is one Gemini call plus N TTS calls. Losing all of that to a
+    single dropped connection is the most expensive failure available, and it is
+    also the most likely one, so transient errors get a few backed-off attempts.
+    Quota errors are excluded: those are handled by switching engines, and
+    retrying them just burns time against a wall.
+    """
+    last_error: Exception | None = None
+    for attempt in range(TTS_MAX_ATTEMPTS):
+        try:
+            return await _synthesize(text, language, state)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            last_error = exc
+            if _is_quota_error(exc) or attempt == TTS_MAX_ATTEMPTS - 1:
+                raise
+            delay = TTS_RETRY_BASE_DELAY * (2 ** attempt)
+            log.warning(
+                "segment synthesis failed (attempt %d/%d), retrying in %.1fs: %s",
+                attempt + 1,
+                TTS_MAX_ATTEMPTS,
+                delay,
+                str(exc)[:200],
+            )
+            await asyncio.sleep(delay)
+    raise last_error  # unreachable; the loop either returns or raises
+
+
+def _normalize_loudness(voice: AudioSegment) -> AudioSegment:
+    """
+    Bring the narration to a consistent level, without ever clipping.
+
+    Edge and ElevenLabs deliver noticeably different levels, and even one engine
+    drifts between sessions. Since the ambience is mixed at a fixed dB relative
+    to full scale, an unnormalized voice track changes the voice-to-bed balance
+    from one session to the next.
+    """
+    if voice.dBFS == float("-inf"):  # pure silence has no level to correct
+        return voice
+    gain = VOICE_TARGET_DBFS - voice.dBFS
+    headroom = VOICE_PEAK_CEILING_DBFS - voice.max_dBFS
+    return voice.apply_gain(min(gain, headroom))
+
+
+def _render_voice(parts: list[AudioSegment]) -> AudioSegment:
+    """Join the narration and level it. No ambience yet."""
+    combined = _concat(parts)
+    if len(combined) == 0:
+        raise ValueError("no audio was produced for this script")
+    return _normalize_loudness(combined)
+
+
+def _mix(
+    voice: AudioSegment,
+    cue_positions_ms: list[int],
+    bells_volume: int,
+    music_volume: int,
+) -> AudioSegment:
+    """Lay the ambience bed under a finished narration."""
+    if bells_volume <= 0 and music_volume <= 0:
+        return voice
+    ambience = build_ambience(
+        duration_ms=len(voice),
+        cue_positions_ms=cue_positions_ms,
+        bells_volume=bells_volume,
+        music_volume=music_volume,
+        frame_rate=OUTPUT_SAMPLE_RATE,
+        channels=OUTPUT_CHANNELS,
+    )
+    return voice.overlay(ambience)
+
+
+def _export(segment: AudioSegment, path) -> None:
+    segment.export(str(path), format="mp3", bitrate=OUTPUT_BITRATE)
+
+
+def _persist_voice(
+    voice: AudioSegment, session_id: str, cue_positions_ms: list[int], language: str
+) -> None:
+    """
+    Keep the narration and its cue points for later remixing.
+
+    Cue positions are derived while walking the assembled timeline and cannot be
+    recovered from the audio, so they travel in a sidecar next to the track.
+    """
+    _export(voice, storage.voice_path(session_id))
+    storage.voice_meta_path(session_id).write_text(
+        json.dumps(
+            {
+                "cues": cue_positions_ms,
+                "duration_ms": len(voice),
+                "language": language,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _decode(path) -> AudioSegment:
+    """
+    Decode one of our own artifacts, using ffmpeg and nothing else.
+
+    pydub's from_file() runs ffprobe first to inspect the stream, which makes
+    ffprobe a hard runtime requirement alongside ffmpeg. We wrote this file and
+    already know what is in it, so the probe buys nothing — asking ffmpeg for
+    raw PCM directly is one process instead of two and one dependency instead
+    of two.
+    """
+    converter = AudioSegment.converter or "ffmpeg"
+    result = subprocess.run(
+        [
+            converter, "-v", "quiet",
+            "-i", str(path),
+            "-f", "s16le",
+            "-acodec", "pcm_s16le",
+            "-ar", str(OUTPUT_SAMPLE_RATE),
+            "-ac", str(OUTPUT_CHANNELS),
+            "-",
+        ],
+        capture_output=True,
+    )
+    if result.returncode != 0 or not result.stdout:
+        raise RuntimeError(f"could not decode {path}")
+    return AudioSegment(
+        result.stdout,
+        frame_rate=OUTPUT_SAMPLE_RATE,
+        sample_width=OUTPUT_SAMPLE_WIDTH,
+        channels=OUTPUT_CHANNELS,
+    )
+
+
+def _load_voice(session_id: str) -> tuple[AudioSegment, list[int]]:
+    """Load a stored narration and its cue points. Raises if either is gone."""
+    voice_file = storage.voice_path(session_id)
+    meta_file = storage.voice_meta_path(session_id)
+    if not voice_file.is_file() or not meta_file.is_file():
+        raise FileNotFoundError(f"no stored narration for session {session_id}")
+    meta = json.loads(meta_file.read_text(encoding="utf-8"))
+    return _decode(voice_file), list(meta.get("cues", []))
+
+
+def _finalize(
     parts: list[AudioSegment],
     cue_positions_ms: list[int],
     bells_volume: int,
     music_volume: int,
-    filepath: str,
-) -> None:
+    session_id: str,
+    language: str,
+) -> str:
     """
-    Concatenate, mix the ambience bed, and encode. Runs entirely in a thread.
-
-    Kept as one blocking unit so the caller pays a single thread hop rather than
-    one per stage.
+    Level the narration, store it, mix and encode. One blocking unit, one hop.
     """
-    combined = _concat(parts)
-    if len(combined) == 0:
-        raise ValueError("no audio was produced for this script")
+    voice = _render_voice(parts)
+    _persist_voice(voice, session_id, cue_positions_ms, language)
+    mix_file = storage.mix_path(session_id, bells_volume, music_volume)
+    _export(_mix(voice, cue_positions_ms, bells_volume, music_volume), mix_file)
+    return mix_file.name
 
-    if bells_volume > 0 or music_volume > 0:
-        ambience = build_ambience(
-            duration_ms=len(combined),
-            cue_positions_ms=cue_positions_ms,
-            bells_volume=bells_volume,
-            music_volume=music_volume,
-            frame_rate=OUTPUT_SAMPLE_RATE,
-            channels=OUTPUT_CHANNELS,
-        )
-        combined = combined.overlay(ambience)
 
-    combined.export(filepath, format="mp3", bitrate=OUTPUT_BITRATE)
+def _remix_blocking(session_id: str, bells_volume: int, music_volume: int) -> str:
+    """Re-mix a stored narration at a new ambience setting."""
+    mix_file = storage.mix_path(session_id, bells_volume, music_volume)
+    if mix_file.is_file():
+        # This exact combination was already rendered — nothing to do.
+        storage.touch(mix_file)
+        storage.touch(storage.voice_path(session_id))
+        return mix_file.name
+
+    voice, cues = _load_voice(session_id)
+    _export(_mix(voice, cues, bells_volume, music_volume), mix_file)
+    storage.touch(storage.voice_path(session_id))
+    return mix_file.name
+
+
+async def remix(session_id: str, bells_volume: int, music_volume: int) -> str:
+    """
+    Produce a new mix of an existing narration without re-synthesizing it.
+
+    This is the whole point of keeping the voice track: changing the bells or
+    the music bed costs one overlay and one encode — about a second — instead of
+    a fresh script and a full TTS render.
+    """
+    return await asyncio.to_thread(_remix_blocking, session_id, bells_volume, music_volume)
 
 
 async def generate_audio(
@@ -281,9 +445,13 @@ async def generate_audio(
     bells_volume: int = 50,
     music_volume: int = 35,
     language: str | None = None,
-) -> str:
+) -> dict:
     """
-    Render a script to a mixed MP3 and return its filename.
+    Render a script to a mixed MP3.
+
+    Returns {"session_id", "filename"}. The session id refers to the stored
+    narration, which `remix()` can re-mix at any ambience setting without
+    synthesizing anything again.
 
     Args:
         script: Text with [pause] / [breath] markers.
@@ -311,7 +479,7 @@ async def generate_audio(
     async def synthesize_one(index: int) -> tuple[int, AudioSegment]:
         nonlocal completed
         async with semaphore:
-            audio = await _synthesize(segments[index]["content"], language, state)
+            audio = await _synthesize_with_retry(segments[index]["content"], language, state)
         audio = audio.fade_in(50).fade_out(50)
         async with progress_lock:
             completed += 1
@@ -345,10 +513,9 @@ async def generate_audio(
     if on_progress:
         await on_progress("combining", 95)
 
-    filename = storage.new_filename()
-    filepath = str(storage.path_for(filename))
-    await asyncio.to_thread(
-        _assemble, parts, cue_positions, bells_volume, music_volume, filepath
+    session_id = storage.new_session_id()
+    filename = await asyncio.to_thread(
+        _finalize, parts, cue_positions, bells_volume, music_volume, session_id, language
     )
 
     if on_progress:
@@ -361,4 +528,4 @@ async def generate_audio(
         len(cue_positions),
         position_ms / 60000.0,
     )
-    return filename
+    return {"session_id": session_id, "filename": filename}

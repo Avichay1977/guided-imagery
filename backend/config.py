@@ -66,6 +66,19 @@ TTS_OUTPUT_FORMAT = "mp3_44100_128"
 # Kept modest: the ceiling is the TTS provider's tolerance, not our CPU.
 TTS_CONCURRENCY = _env_int("TTS_CONCURRENCY", 4, lo=1, hi=16)
 
+# A whole render is expensive — one Gemini call plus N TTS calls. Throwing all
+# of it away because a single segment hit a transient network blip is the most
+# wasteful failure mode there is, so segments retry before giving up.
+TTS_MAX_ATTEMPTS = _env_int("TTS_MAX_ATTEMPTS", 3, lo=1, hi=6)
+TTS_RETRY_BASE_DELAY = float(_env_int("TTS_RETRY_BASE_DELAY_MS", 500, lo=0)) / 1000.0
+
+# Narration is normalized to this level before mixing. Without it, perceived
+# loudness drifts between engines and between sessions, and the ambience bed
+# sits at a different relative level every time.
+VOICE_TARGET_DBFS = -20.0
+# Headroom kept below full scale so normalization can never clip.
+VOICE_PEAK_CEILING_DBFS = -1.0
+
 # Voice settings optimized for calm meditation delivery
 TTS_VOICE_SETTINGS = {
     "stability": 0.80,
@@ -126,6 +139,9 @@ AUDIO_JANITOR_INTERVAL_MINUTES = _env_int("AUDIO_JANITOR_INTERVAL_MINUTES", 30, 
 RATE_LIMIT_SESSION = os.getenv("RATE_LIMIT_SESSION", "5/hour")
 RATE_LIMIT_TRANSLATE = os.getenv("RATE_LIMIT_TRANSLATE", "20/hour")
 RATE_LIMIT_YOUTUBE = os.getenv("RATE_LIMIT_YOUTUBE", "10/hour")
+# Remixing costs one overlay and one encode, no model or TTS calls at all, so it
+# can be far more generous than generation.
+RATE_LIMIT_REMIX = os.getenv("RATE_LIMIT_REMIX", "60/hour")
 
 # Backstop against the per-client limit being sidestepped by spoofed forwarding
 # headers: a hard ceiling on generations running at once, process-wide.

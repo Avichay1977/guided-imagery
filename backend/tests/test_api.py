@@ -131,6 +131,52 @@ class TestAudioServing:
         assert b"/bin/bash" not in response.content
 
 
+class TestRemixEndpoint:
+    @pytest.mark.parametrize("payload", [
+        {"session_id": "short"},
+        {"session_id": "ABCDEF123456"},                          # uppercase is not our id shape
+        {"session_id": "../../../etc/passwd"},
+        {"session_id": "abcdef123456", "bells_volume": 300},
+        {"session_id": "abcdef123456", "music_volume": -5},
+        {},
+    ])
+    def test_rejects_bad_input(self, client, payload):
+        assert client.post("/api/remix", json=payload).status_code == 422
+
+    def test_unknown_session_is_404_not_a_server_error(self, client):
+        response = client.post("/api/remix", json={
+            "session_id": "abcdef123456", "bells_volume": 50, "music_volume": 35,
+        })
+        assert response.status_code == 404
+
+    def test_expired_session_explains_itself(self, client):
+        response = client.post("/api/remix", json={"session_id": "0123456789ab"})
+        assert response.status_code == 404
+        assert "generate a new one" in response.json()["detail"].lower()
+
+    def test_remixes_a_real_session(self, client, monkeypatch, tmp_path):
+        import storage
+        import tts_service
+
+        monkeypatch.setattr(storage, "AUDIO_ROOT", tmp_path)
+        session_id = "abcdef123456"
+        storage.voice_path(session_id).write_bytes(b"not really audio")
+        storage.voice_meta_path(session_id).write_text('{"cues": [100]}')
+
+        async def fake_remix(sid, bells, music):
+            return storage.mix_filename(sid, bells, music)
+
+        monkeypatch.setattr(tts_service, "remix", fake_remix)
+
+        response = client.post("/api/remix", json={
+            "session_id": session_id, "bells_volume": 70, "music_volume": 20,
+        })
+        assert response.status_code == 200
+        body = response.json()
+        assert body["session_id"] == session_id
+        assert body["audio_url"] == f"/audio/{storage.mix_filename(session_id, 70, 20)}"
+
+
 class TestRateLimiting:
     def test_repeated_calls_eventually_get_429_with_retry_after(self, client):
         payload = {"text": "hi", "source_language": "he", "target_language": "he"}

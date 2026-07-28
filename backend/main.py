@@ -16,18 +16,22 @@ from youtube_transcript_api import YouTubeTranscriptApi
 
 import rate_limit
 import storage
+import tts_service
 from config import (
     ALLOWED_ORIGINS,
     CAPTION_BATCH_SIZE,
     DEBUG_ERRORS,
+    ELEVEN_API_KEY,
     GEMINI_MODEL,
     GOOGLE_API_KEY,
     MAX_CAPTION_CHARS,
     MAX_CAPTION_SEGMENTS,
     MAX_CONCURRENT_GENERATIONS,
+    RATE_LIMIT_REMIX,
     RATE_LIMIT_SESSION,
     RATE_LIMIT_TRANSLATE,
     RATE_LIMIT_YOUTUBE,
+    TTS_ENGINE,
 )
 from prompt_template import build_meditation_prompt
 from tts_service import generate_audio
@@ -40,8 +44,39 @@ log = logging.getLogger("guided_imagery")
 _generation_slots = asyncio.Semaphore(MAX_CONCURRENT_GENERATIONS)
 
 
+def _check_configuration() -> None:
+    """
+    Surface misconfiguration at boot rather than on a user's first request.
+
+    Without this, a missing key produces an SDK error halfway through a
+    generation, which reads like a bug in the app rather than a blank field in
+    the environment.
+    """
+    if not GOOGLE_API_KEY:
+        log.error(
+            "GOOGLE_API_KEY is not set — script generation and translation will "
+            "fail. See backend/.env.example."
+        )
+    if TTS_ENGINE == "elevenlabs" and not ELEVEN_API_KEY:
+        log.warning(
+            "TTS_ENGINE=elevenlabs but ELEVEN_API_KEY is not set — every session "
+            "will fall back to edge on its first segment."
+        )
+    for name, spec in (
+        ("RATE_LIMIT_SESSION", RATE_LIMIT_SESSION),
+        ("RATE_LIMIT_TRANSLATE", RATE_LIMIT_TRANSLATE),
+        ("RATE_LIMIT_YOUTUBE", RATE_LIMIT_YOUTUBE),
+        ("RATE_LIMIT_REMIX", RATE_LIMIT_REMIX),
+    ):
+        try:
+            rate_limit.parse_spec(spec)
+        except ValueError:
+            log.error("%s is malformed (%r); expected a form like '5/hour'.", name, spec)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _check_configuration()
     storage.prune()  # clear anything a previous process left behind
     janitor = asyncio.create_task(storage.janitor_loop())
     sweeper = asyncio.create_task(_rate_limit_sweeper())
@@ -218,7 +253,7 @@ async def create_session(request: Request, session: SessionRequest):
                 while not progress_queue.empty():
                     yield await progress_queue.get()
 
-                filename = tts_task.result()
+                result = tts_task.result()
             finally:
                 if not tts_task.done():
                     tts_task.cancel()
@@ -227,7 +262,8 @@ async def create_session(request: Request, session: SessionRequest):
                 "event": "complete",
                 "data": json.dumps({
                     "script": script,
-                    "audio_url": f"/audio/{filename}",
+                    "audio_url": f"/audio/{result['filename']}",
+                    "session_id": result["session_id"],
                     "duration_minutes": session.duration_minutes,
                 }, ensure_ascii=False),
             }
@@ -241,6 +277,44 @@ async def create_session(request: Request, session: SessionRequest):
             _generation_slots.release()
 
     return EventSourceResponse(event_generator())
+
+
+class RemixRequest(BaseModel):
+    session_id: str = Field(..., min_length=12, max_length=12, pattern="^[a-f0-9]{12}$")
+    bells_volume: int = Field(default=50, ge=0, le=100)
+    music_volume: int = Field(default=35, ge=0, le=100)
+
+
+@app.post("/api/remix", dependencies=[Depends(rate_limit.rate_limit(RATE_LIMIT_REMIX))])
+async def remix_session(req: RemixRequest):
+    """
+    Re-mix an existing narration at a new ambience setting.
+
+    Changing the bells or the music used to mean generating a whole new session:
+    a fresh Gemini script and a full TTS render, minutes of work and real API
+    spend, for a change that only touches the last overlay. The narration is
+    kept, so this is one overlay and one encode. Repeat requests for a
+    combination already rendered do not even cost that.
+    """
+    if not storage.has_voice(req.session_id):
+        raise HTTPException(
+            status_code=404,
+            detail="That session is no longer available. Generate a new one.",
+        )
+    try:
+        filename = await tts_service.remix(
+            req.session_id, req.bells_volume, req.music_volume
+        )
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail="That session is no longer available. Generate a new one.",
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=_safe_error(exc, "Could not remix that session.")
+        )
+    return {"audio_url": f"/audio/{filename}", "session_id": req.session_id}
 
 
 @app.post("/api/translate", dependencies=[Depends(rate_limit.rate_limit(RATE_LIMIT_TRANSLATE))])
