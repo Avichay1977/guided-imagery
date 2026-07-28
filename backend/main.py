@@ -1,53 +1,104 @@
-import json
 import asyncio
-import re
+import json
+import logging
 import os
+import re
+from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import FastAPI, Request
+
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
-from typing import Optional
-from sse_starlette.sse import EventSourceResponse
 from google import genai
+from pydantic import BaseModel, Field
+from sse_starlette.sse import EventSourceResponse
 from youtube_transcript_api import YouTubeTranscriptApi
 
-from config import GOOGLE_API_KEY, GEMINI_MODEL, AUDIO_OUTPUT_DIR
+import rate_limit
+import storage
+from config import (
+    ALLOWED_ORIGINS,
+    CAPTION_BATCH_SIZE,
+    DEBUG_ERRORS,
+    GEMINI_MODEL,
+    GOOGLE_API_KEY,
+    MAX_CAPTION_CHARS,
+    MAX_CAPTION_SEGMENTS,
+    MAX_CONCURRENT_GENERATIONS,
+    RATE_LIMIT_SESSION,
+    RATE_LIMIT_TRANSLATE,
+    RATE_LIMIT_YOUTUBE,
+)
 from prompt_template import build_meditation_prompt
 from tts_service import generate_audio
 
-app = FastAPI(title="Guided Imagery")
+log = logging.getLogger("guided_imagery")
 
-ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://localhost:3000",
-    "https://guided-imagery.onrender.com",
-]
-# Allow custom origin from env
-if os.getenv("RENDER_EXTERNAL_URL"):
-    ALLOWED_ORIGINS.append(os.getenv("RENDER_EXTERNAL_URL"))
+# Hard ceiling on simultaneous renders. The per-client limiter is the first line
+# of defence; this one holds even when client identity is spoofed, because it
+# counts work in flight rather than callers.
+_generation_slots = asyncio.Semaphore(MAX_CONCURRENT_GENERATIONS)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    storage.prune()  # clear anything a previous process left behind
+    janitor = asyncio.create_task(storage.janitor_loop())
+    sweeper = asyncio.create_task(_rate_limit_sweeper())
+    try:
+        yield
+    finally:
+        for task in (janitor, sweeper):
+            task.cancel()
+        await asyncio.gather(janitor, sweeper, return_exceptions=True)
+
+
+async def _rate_limit_sweeper() -> None:
+    """Drop cold rate-limit keys so the tables don't grow without bound."""
+    while True:
+        await asyncio.sleep(600)
+        try:
+            rate_limit.sweep_all()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("rate limit sweep failed")
+
+
+app = FastAPI(title="Guided Imagery", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    # No cookies or Authorization headers are used, so credentialed CORS would
+    # widen exposure for nothing.
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type"],
 )
 
-app.mount("/audio", StaticFiles(directory=AUDIO_OUTPUT_DIR), name="audio")
-
-# Serve built frontend in production
-FRONTEND_DIR = Path(__file__).parent.parent / "frontend" / "dist"
+FRONTEND_DIR = (Path(__file__).parent.parent / "frontend" / "dist").resolve()
 
 gemini_client = None
+
 
 def get_gemini_client():
     global gemini_client
     if gemini_client is None:
         gemini_client = genai.Client(api_key=GOOGLE_API_KEY)
     return gemini_client
+
+
+def _safe_error(exc: Exception, fallback: str) -> str:
+    """
+    Client-facing error text.
+
+    Exception strings from the model and TTS SDKs can carry endpoints, payload
+    fragments and local paths, so the detail stays in the log unless
+    DEBUG_ERRORS is explicitly enabled.
+    """
+    log.exception(fallback)
+    return str(exc) if DEBUG_ERRORS else fallback
 
 
 class SessionRequest(BaseModel):
@@ -58,6 +109,7 @@ class SessionRequest(BaseModel):
     depth: str = Field(default="standard", pattern="^(light|standard|medium|deep)$")
     age_group: str = Field(default="adults", pattern="^(children|teens|adults)$")
     bells_volume: int = Field(default=50, ge=0, le=100)
+    music_volume: int = Field(default=35, ge=0, le=100)
 
 
 class TranslateRequest(BaseModel):
@@ -66,18 +118,30 @@ class TranslateRequest(BaseModel):
     target_language: str = Field(..., pattern="^(he|en)$")
 
 
-@app.post("/api/session")
+@app.post("/api/session", dependencies=[Depends(rate_limit.rate_limit(RATE_LIMIT_SESSION))])
 async def create_session(request: Request, session: SessionRequest):
+    # Acquired here rather than inside the generator so an overloaded server
+    # answers with a real 429 instead of opening a stream that fails later.
+    try:
+        await asyncio.wait_for(_generation_slots.acquire(), timeout=0.05)
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=429,
+            detail="The server is at capacity. Please try again shortly.",
+            headers={"Retry-After": "60"},
+        )
+
+    is_hebrew = session.language == "he"
+
     async def event_generator():
         try:
-            # Stage 1: Generate script
             yield {
                 "event": "progress",
                 "data": json.dumps({
                     "stage": "generating_script",
                     "message": (
                         "יוצר תסריט היפנוזה..." if session.mode == "hypnosis" else "יוצר תסריט מדיטציה..."
-                    ) if session.language == "he" else (
+                    ) if is_hebrew else (
                         "Generating hypnosis script..." if session.mode == "hypnosis" else "Generating meditation script..."
                     ),
                     "percent": 10,
@@ -97,7 +161,7 @@ async def create_session(request: Request, session: SessionRequest):
                 model=GEMINI_MODEL,
                 contents=prompt,
             )
-            script = response.text.strip()
+            script = (response.text or "").strip()
 
             if not script:
                 yield {
@@ -110,17 +174,16 @@ async def create_session(request: Request, session: SessionRequest):
                 "event": "progress",
                 "data": json.dumps({
                     "stage": "script_ready",
-                    "message": "התסריט מוכן, מתחיל הקלטה..." if session.language == "he" else "Script ready, recording audio...",
+                    "message": "התסריט מוכן, מתחיל הקלטה..." if is_hebrew else "Script ready, recording audio...",
                     "percent": 25,
                 }, ensure_ascii=False),
             }
 
-            # Stage 2: TTS with progress
             progress_queue = asyncio.Queue()
 
             async def on_tts_progress(stage, percent):
                 overall = 25 + int(percent * 0.70)
-                msg = f"מקליט אודיו... {percent}%" if session.language == "he" else f"Recording audio... {percent}%"
+                msg = f"מקליט אודיו... {percent}%" if is_hebrew else f"Recording audio... {percent}%"
                 await progress_queue.put({
                     "event": "progress",
                     "data": json.dumps({
@@ -131,26 +194,35 @@ async def create_session(request: Request, session: SessionRequest):
                 })
 
             tts_task = asyncio.create_task(
-                generate_audio(script, on_tts_progress, bells_volume=session.bells_volume)
+                generate_audio(
+                    script,
+                    on_tts_progress,
+                    bells_volume=session.bells_volume,
+                    music_volume=session.music_volume,
+                    language=session.language,
+                )
             )
 
-            while not tts_task.done():
-                try:
-                    event = await asyncio.wait_for(progress_queue.get(), timeout=0.5)
-                    yield event
-                except asyncio.TimeoutError:
-                    pass
+            try:
+                while not tts_task.done():
+                    try:
+                        event = await asyncio.wait_for(progress_queue.get(), timeout=0.5)
+                        yield event
+                    except asyncio.TimeoutError:
+                        pass
 
-                if await request.is_disconnected():
+                    if await request.is_disconnected():
+                        tts_task.cancel()
+                        return
+
+                while not progress_queue.empty():
+                    yield await progress_queue.get()
+
+                filename = tts_task.result()
+            finally:
+                if not tts_task.done():
                     tts_task.cancel()
-                    return
 
-            while not progress_queue.empty():
-                yield await progress_queue.get()
-
-            filename = tts_task.result()
-
-            # Stage 3: Done
             yield {
                 "event": "complete",
                 "data": json.dumps({
@@ -160,16 +232,18 @@ async def create_session(request: Request, session: SessionRequest):
                 }, ensure_ascii=False),
             }
 
-        except Exception as e:
-            yield {
-                "event": "error",
-                "data": json.dumps({"message": str(e)}),
-            }
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            message = _safe_error(exc, "Failed to generate the session. Please try again.")
+            yield {"event": "error", "data": json.dumps({"message": message}, ensure_ascii=False)}
+        finally:
+            _generation_slots.release()
 
     return EventSourceResponse(event_generator())
 
 
-@app.post("/api/translate")
+@app.post("/api/translate", dependencies=[Depends(rate_limit.rate_limit(RATE_LIMIT_TRANSLATE))])
 async def translate_script(req: TranslateRequest):
     """Translate a meditation script between Hebrew and English using Gemini."""
     if req.source_language == req.target_language:
@@ -194,18 +268,42 @@ RULES:
 TEXT TO TRANSLATE:
 {req.text}"""
 
-    response = await get_gemini_client().aio.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=prompt,
-    )
-    translated = response.text.strip()
-    return {"translated_text": translated}
+    try:
+        response = await get_gemini_client().aio.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=_safe_error(exc, "Translation service is unavailable."),
+        )
+    return {"translated_text": (response.text or "").strip()}
 
 
 # ── YouTube Translation ─────────────────────────────────────────
 
 class YouTubeCaptionsRequest(BaseModel):
-    video_url: str = Field(..., min_length=5)
+    video_url: str = Field(..., min_length=5, max_length=500)
+    target_language: str = Field(default="he", pattern="^(he|en|ar|ru|fr|es|de)$")
+
+
+class CaptionSegment(BaseModel):
+    start: float = Field(..., ge=0)
+    duration: float = Field(default=0, ge=0)
+    text: str = Field(default="", max_length=2000)
+
+
+class TranslateCaptionsRequest(BaseModel):
+    """
+    Bounded on purpose.
+
+    This endpoint fans out to Gemini once per batch, so an unbounded segment
+    list is an unbounded bill. The previous version read the raw JSON body with
+    no model and no ceiling.
+    """
+
+    segments: list[CaptionSegment] = Field(..., min_length=1, max_length=MAX_CAPTION_SEGMENTS)
     target_language: str = Field(default="he", pattern="^(he|en|ar|ru|fr|es|de)$")
 
 
@@ -222,115 +320,115 @@ def _extract_video_id(url: str) -> str:
     raise ValueError("Invalid YouTube URL")
 
 
-@app.post("/api/youtube/captions")
+@app.post("/api/youtube/captions", dependencies=[Depends(rate_limit.rate_limit(RATE_LIMIT_YOUTUBE))])
 async def get_youtube_captions(req: YouTubeCaptionsRequest):
-    """Fetch YouTube captions and translate them to target language."""
+    """Fetch YouTube captions in the best available language."""
     try:
         video_id = _extract_video_id(req.video_url)
     except ValueError:
         return {"error": "קישור יוטיוב לא תקין"}
 
-    # Try to fetch captions in order of preference
-    try:
+    def _fetch():
         ytt_api = YouTubeTranscriptApi()
         transcript_list = ytt_api.list(video_id)
-    except Exception:
+        # Preference order: requested language, then English, then anything.
+        for languages, label in (
+            ([req.target_language], req.target_language),
+            (["en"], "en"),
+            (None, "unknown"),
+        ):
+            try:
+                if languages is None:
+                    return ytt_api.fetch(transcript_list), label
+                return ytt_api.fetch(transcript_list, languages=languages), label
+            except Exception:
+                continue
+        return None, None
+
+    try:
+        captions, source_lang = await asyncio.to_thread(_fetch)
+    except Exception as exc:
+        log.warning("youtube caption fetch failed for %s: %s", video_id, exc)
         return {"error": "לא ניתן לגשת לכתוביות של הסרטון"}
 
-    captions = None
-    source_lang = None
-
-    # 1. Try target language first (already translated by YouTube)
-    try:
-        captions = ytt_api.fetch(transcript_list, languages=[req.target_language])
-        source_lang = req.target_language
-    except Exception:
-        pass
-
-    # 2. Try English
     if captions is None:
-        try:
-            captions = ytt_api.fetch(transcript_list, languages=["en"])
-            source_lang = "en"
-        except Exception:
-            pass
-
-    # 3. Try any available language
-    if captions is None:
-        try:
-            captions = ytt_api.fetch(transcript_list)
-            source_lang = "unknown"
-        except Exception:
-            return {"error": "No captions available for this video"}
-
-    segments = [
-        {"start": s.start, "duration": s.duration, "text": s.text}
-        for s in captions
-    ]
+        return {"error": "No captions available for this video"}
 
     return {
         "video_id": video_id,
         "source_language": source_lang,
-        "segments": segments,
+        "segments": [
+            {"start": s.start, "duration": s.duration, "text": s.text} for s in captions
+        ],
     }
 
 
-@app.post("/api/youtube/translate-captions")
-async def translate_youtube_captions(request: Request):
-    """Translate caption segments to Hebrew using Gemini via SSE streaming."""
-    body = await request.json()
-    segments = body.get("segments", [])
-    target_language = body.get("target_language", "he")
-
-    if not segments:
-        return {"error": "No segments provided"}
+@app.post(
+    "/api/youtube/translate-captions",
+    dependencies=[Depends(rate_limit.rate_limit(RATE_LIMIT_YOUTUBE))],
+)
+async def translate_youtube_captions(req: TranslateCaptionsRequest):
+    """Translate caption segments, batching and running the batches in parallel."""
+    total_chars = sum(len(s.text) for s in req.segments)
+    if total_chars > MAX_CAPTION_CHARS:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Transcript too long ({total_chars} chars, limit {MAX_CAPTION_CHARS}).",
+        )
 
     lang_names = {"he": "עברית", "en": "English", "ar": "العربية", "ru": "Русский",
                   "fr": "Français", "es": "Español", "de": "Deutsch"}
-    target_name = lang_names.get(target_language, target_language)
+    target_name = lang_names.get(req.target_language, req.target_language)
+    nikud_rule = "- Use modern spoken Hebrew, no nikud" if req.target_language == "he" else ""
 
-    # Translate in batches of 20 segments for speed
-    BATCH_SIZE = 20
-    translated_segments = []
+    batches = [
+        req.segments[i:i + CAPTION_BATCH_SIZE]
+        for i in range(0, len(req.segments), CAPTION_BATCH_SIZE)
+    ]
+    # Batches are independent; running them serially made a long video take
+    # minutes for no reason.
+    semaphore = asyncio.Semaphore(4)
 
-    for i in range(0, len(segments), BATCH_SIZE):
-        batch = segments[i:i + BATCH_SIZE]
-        numbered_lines = "\n".join(
-            f"{j+1}. {seg['text']}" for j, seg in enumerate(batch)
-        )
-
+    async def translate_batch(batch):
+        numbered = "\n".join(f"{j + 1}. {seg.text}" for j, seg in enumerate(batch))
         prompt = f"""Translate these subtitle lines to {target_name}.
 
 RULES:
 - Return ONLY the numbered translations, one per line, same numbering
 - Keep translations concise and natural for subtitles
 - Do not add explanations or notes
-{"- Use modern spoken Hebrew, no nikud" if target_language == "he" else ""}
+{nikud_rule}
 
-{numbered_lines}"""
+{numbered}"""
+        async with semaphore:
+            try:
+                response = await get_gemini_client().aio.models.generate_content(
+                    model=GEMINI_MODEL,
+                    contents=prompt,
+                )
+                lines = (response.text or "").strip().split("\n")
+            except Exception:
+                log.exception("caption batch translation failed; falling back to source text")
+                lines = []
 
-        response = await get_gemini_client().aio.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt,
-        )
-
-        lines = response.text.strip().split("\n")
+        out = []
         for j, seg in enumerate(batch):
-            translated_text = seg["text"]  # fallback
+            translated = seg.text
             for line in lines:
-                # Match "1. translated text" or "1) translated text"
-                match = re.match(rf'^{j+1}[\.\)]\s*(.+)', line)
+                match = re.match(rf'^{j + 1}[\.\)]\s*(.+)', line)
                 if match:
-                    translated_text = match.group(1).strip()
+                    translated = match.group(1).strip()
                     break
-            translated_segments.append({
-                "start": seg["start"],
-                "duration": seg["duration"],
-                "original": seg["text"],
-                "text": translated_text,
+            out.append({
+                "start": seg.start,
+                "duration": seg.duration,
+                "original": seg.text,
+                "text": translated,
             })
+        return out
 
-    return {"segments": translated_segments}
+    results = await asyncio.gather(*(translate_batch(b) for b in batches))
+    return {"segments": [seg for batch in results for seg in batch]}
 
 
 @app.get("/api/health")
@@ -338,18 +436,38 @@ async def health():
     return {"status": "ok"}
 
 
+@app.get("/audio/{filename}")
+async def get_audio(filename: str):
+    """
+    Serve a generated track.
+
+    Goes through storage.resolve, which rejects anything that is not a plain
+    filename inside the audio directory. Artifacts are pruned on a TTL, so a
+    404 here means expired, not missing.
+    """
+    path = storage.resolve(filename)
+    if path is None:
+        raise HTTPException(status_code=404, detail="Audio not found or expired.")
+    return FileResponse(
+        path,
+        media_type="audio/mpeg",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
+
 # Serve frontend static files (must be after API routes)
 if FRONTEND_DIR.exists():
-    app.mount("/assets", StaticFiles(directory=FRONTEND_DIR / "assets"), name="frontend_assets")
-    app.mount("/locales", StaticFiles(directory=FRONTEND_DIR / "locales"), name="frontend_locales")
-
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
-        """Serve index.html for all non-API routes (SPA catch-all)."""
-        file_path = FRONTEND_DIR / full_path
-        if file_path.exists() and file_path.is_file():
-            return FileResponse(file_path)
-        return FileResponse(FRONTEND_DIR / "index.html")
+        """SPA catch-all, refusing any path that resolves outside the build dir."""
+        index = FRONTEND_DIR / "index.html"
+        try:
+            candidate = (FRONTEND_DIR / full_path).resolve()
+        except (OSError, ValueError):
+            return FileResponse(index)
+        if candidate.is_file() and candidate.is_relative_to(FRONTEND_DIR):
+            return FileResponse(candidate)
+        return FileResponse(index)
 
 
 if __name__ == "__main__":

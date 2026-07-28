@@ -19,8 +19,6 @@ export default function DeltaCanvas() {
 
     // ADSR parameters
     const sustainLevel = 0.6
-    const decayLevel = 0.6
-    const releaseEnd = 0
 
     const draw = (dt) => {
       t += dt
@@ -259,7 +257,6 @@ export default function DeltaCanvas() {
       ctx.fillText(`-${maxSlope}`, gaugeX + gaugeR + 5, gaugeY + 5)
 
       // --- Bottom: Tangent line visualization ---
-      const tangentY = h * 0.78
       ctx.fillStyle = 'rgba(255, 255, 255, 0.3)'
       ctx.font = '12px monospace'
       ctx.textAlign = 'center'

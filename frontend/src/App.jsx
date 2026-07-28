@@ -19,7 +19,7 @@ function App() {
     document.documentElement.lang = i18n.language
   }, [i18n, i18n.language])
 
-  const handleGenerate = ({ topic, duration, mode, depth, ageGroup, bellsVolume }) => {
+  const handleGenerate = ({ topic, duration, mode, depth, ageGroup, bellsVolume, musicVolume }) => {
     generate({
       topic,
       durationMinutes: duration,
@@ -28,6 +28,7 @@ function App() {
       depth,
       ageGroup,
       bellsVolume,
+      musicVolume,
     })
   }
 

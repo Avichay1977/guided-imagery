@@ -1,4 +1,6 @@
+import logging
 import os
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -10,17 +12,59 @@ try:
 except Exception:
     pass
 
-# API Keys
+
+def _env_int(name: str, default: int, lo: int | None = None, hi: int | None = None) -> int:
+    """Read an int from the environment, clamped and never raising on junk."""
+    try:
+        value = int(os.getenv(name, default))
+    except (TypeError, ValueError):
+        value = default
+    if lo is not None:
+        value = max(lo, value)
+    if hi is not None:
+        value = min(hi, value)
+    return value
+
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+# ── Logging ───────────────────────────────────────────────────────
+
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
+    format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
+)
+
+# When true, API errors return the raw exception text. Never enable in production —
+# exception strings from the model/TTS SDKs can carry endpoint and path details.
+DEBUG_ERRORS = _env_flag("DEBUG_ERRORS", False)
+
+# ── API Keys ──────────────────────────────────────────────────────
+
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 ELEVEN_API_KEY = os.getenv("ELEVEN_API_KEY")
 ELEVEN_VOICE_ID = os.getenv("ELEVEN_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
 
-# Gemini
-GEMINI_MODEL = "gemini-2.5-flash"
+# ── Gemini ────────────────────────────────────────────────────────
 
-# ElevenLabs
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+
+# ── TTS ───────────────────────────────────────────────────────────
+
+# "edge" (free) or "elevenlabs" (premium). Falls back to edge on quota errors.
+TTS_ENGINE = os.getenv("TTS_ENGINE", "edge")
 TTS_MODEL = "eleven_multilingual_v2"
 TTS_OUTPUT_FORMAT = "mp3_44100_128"
+
+# Segments between pause markers are independent, so they synthesize in parallel.
+# Kept modest: the ceiling is the TTS provider's tolerance, not our CPU.
+TTS_CONCURRENCY = _env_int("TTS_CONCURRENCY", 4, lo=1, hi=16)
 
 # Voice settings optimized for calm meditation delivery
 TTS_VOICE_SETTINGS = {
@@ -30,6 +74,13 @@ TTS_VOICE_SETTINGS = {
     "use_speaker_boost": True,
 }
 
+# Canonical PCM format for the assembled track. Normalizing every segment to this
+# up front is what lets the concatenation be a single buffer join.
+OUTPUT_SAMPLE_RATE = 44100
+OUTPUT_CHANNELS = 1
+OUTPUT_SAMPLE_WIDTH = 2
+OUTPUT_BITRATE = "128k"
+
 # Pause durations in milliseconds
 PAUSE_DURATIONS = {
     "[pause]": 3000,
@@ -38,6 +89,67 @@ PAUSE_DURATIONS = {
     "[breath]": 4000,
 }
 
-# Audio output directory
+# ── Ambience (bells + music bed) ──────────────────────────────────
+
+# Ambience is all low-frequency content — the highest bell partial lands near
+# 4.8 kHz — so it is synthesized at 16 kHz and resampled up on mix. That is a
+# ~2.75x cut in peak memory versus synthesizing at 44.1 kHz, with nothing
+# audible lost under a voice track.
+AMBIENCE_SAMPLE_RATE = 16000
+
+# Seamless-loop length for the music bed. Partial and LFO frequencies are
+# snapped to whole cycles of this window so the loop joins without a crossfade.
+PAD_LOOP_SECONDS = 30.0
+
+# Bells ring on script pause markers, never mid-sentence. This is the floor on
+# spacing so consecutive markers don't cluster into a chime pile-up.
+BELL_MIN_SPACING_MS = 20_000
+# Delay after a pause begins, so the chime lands in the silence, not on the
+# tail of the last word.
+BELL_CUE_OFFSET_MS = 250
+
+# ── Audio artifact storage ────────────────────────────────────────
+
 AUDIO_OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "audio_output")
 os.makedirs(AUDIO_OUTPUT_DIR, exist_ok=True)
+
+# Generated audio is a cache, not a record: the host filesystem is ephemeral and
+# is wiped on every deploy. The janitor prunes by age first, then by total size.
+AUDIO_TTL_HOURS = _env_int("AUDIO_TTL_HOURS", 6, lo=1)
+AUDIO_MAX_MB = _env_int("AUDIO_MAX_MB", 512, lo=16)
+AUDIO_JANITOR_INTERVAL_MINUTES = _env_int("AUDIO_JANITOR_INTERVAL_MINUTES", 30, lo=1)
+
+# ── Rate limiting ─────────────────────────────────────────────────
+
+# Per-client sliding windows. Generation is the expensive path (one Gemini call
+# plus N TTS calls), so it gets a much tighter budget than the read endpoints.
+RATE_LIMIT_SESSION = os.getenv("RATE_LIMIT_SESSION", "5/hour")
+RATE_LIMIT_TRANSLATE = os.getenv("RATE_LIMIT_TRANSLATE", "20/hour")
+RATE_LIMIT_YOUTUBE = os.getenv("RATE_LIMIT_YOUTUBE", "10/hour")
+
+# Backstop against the per-client limit being sidestepped by spoofed forwarding
+# headers: a hard ceiling on generations running at once, process-wide.
+MAX_CONCURRENT_GENERATIONS = _env_int("MAX_CONCURRENT_GENERATIONS", 2, lo=1, hi=32)
+
+# Number of reverse proxies in front of the app. The client IP is read this many
+# hops from the right of X-Forwarded-For; entries further left are attacker
+# controlled. Render terminates at one proxy.
+TRUSTED_PROXY_HOPS = _env_int("TRUSTED_PROXY_HOPS", 1, lo=0)
+
+# ── CORS ──────────────────────────────────────────────────────────
+
+_DEFAULT_ORIGINS = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "https://guided-imagery.onrender.com",
+]
+_extra_origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
+if os.getenv("RENDER_EXTERNAL_URL"):
+    _extra_origins.append(os.getenv("RENDER_EXTERNAL_URL"))
+ALLOWED_ORIGINS = list(dict.fromkeys(_DEFAULT_ORIGINS + _extra_origins))
+
+# ── Request limits ────────────────────────────────────────────────
+
+MAX_CAPTION_SEGMENTS = _env_int("MAX_CAPTION_SEGMENTS", 1500, lo=1)
+MAX_CAPTION_CHARS = _env_int("MAX_CAPTION_CHARS", 100_000, lo=1000)
+CAPTION_BATCH_SIZE = _env_int("CAPTION_BATCH_SIZE", 20, lo=1, hi=100)

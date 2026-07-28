@@ -23,6 +23,9 @@
     "bells_label": "Background Bells",
     "bells_off": "Off",
     "bells_loud": "Loud",
+    "music_label": "Music Bed",
+    "music_off": "Off",
+    "music_loud": "Loud",
     "generate": "Begin Journey",
     "generate_hypnosis": "Begin Hypnosis",
     "generating": "Creating your meditation..."

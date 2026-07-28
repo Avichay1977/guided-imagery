@@ -6,6 +6,31 @@ const DURATIONS = [3, 5, 10, 15, 20]
 const DEPTH_OPTIONS = ['light', 'medium', 'deep']
 const AGE_OPTIONS = ['children', 'teens', 'adults']
 
+function VolumeSlider({ icon, label, offHint, loudHint, value, onChange }) {
+  return (
+    <div className="form-group mix-group">
+      <label className="form-label">
+        <span className="mix-icon">{icon}</span>
+        {label}
+        <span className="mix-value">{value}%</span>
+      </label>
+      <input
+        type="range"
+        className="mix-slider"
+        min="0"
+        max="100"
+        step="5"
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+      />
+      <div className="mix-hints">
+        <span>{offHint}</span>
+        <span>{loudHint}</span>
+      </div>
+    </div>
+  )
+}
+
 function SessionForm({ onSubmit }) {
   const { t } = useTranslation()
   const [topic, setTopic] = useState('')
@@ -14,6 +39,7 @@ function SessionForm({ onSubmit }) {
   const [depth, setDepth] = useState('medium')
   const [ageGroup, setAgeGroup] = useState('adults')
   const [bellsVolume, setBellsVolume] = useState(50)
+  const [musicVolume, setMusicVolume] = useState(35)
 
   const handleSubmit = (e) => {
     e.preventDefault()
@@ -25,6 +51,7 @@ function SessionForm({ onSubmit }) {
       depth: mode === 'hypnosis' ? depth : 'standard',
       ageGroup,
       bellsVolume,
+      musicVolume,
     })
   }
 
@@ -120,27 +147,24 @@ function SessionForm({ onSubmit }) {
         </div>
       </div>
 
-      {/* Bells Volume */}
-      <div className="form-group bells-group">
-        <label className="form-label">
-          <span className="bells-icon">🔔</span>
-          {t('form.bells_label')}
-          <span className="bells-value">{bellsVolume}%</span>
-        </label>
-        <input
-          type="range"
-          className="bells-slider"
-          min="0"
-          max="100"
-          step="5"
-          value={bellsVolume}
-          onChange={(e) => setBellsVolume(Number(e.target.value))}
-        />
-        <div className="bells-hints">
-          <span>{t('form.bells_off')}</span>
-          <span>{t('form.bells_loud')}</span>
-        </div>
-      </div>
+      {/* Ambience: bells ring on the script's pause markers, music bed sits under everything */}
+      <VolumeSlider
+        icon="🔔"
+        label={t('form.bells_label')}
+        offHint={t('form.bells_off')}
+        loudHint={t('form.bells_loud')}
+        value={bellsVolume}
+        onChange={setBellsVolume}
+      />
+
+      <VolumeSlider
+        icon="🎵"
+        label={t('form.music_label')}
+        offHint={t('form.music_off')}
+        loudHint={t('form.music_loud')}
+        value={musicVolume}
+        onChange={setMusicVolume}
+      />
 
       <button
         type="submit"

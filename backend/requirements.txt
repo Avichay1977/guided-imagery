@@ -1,14 +1,16 @@
-fastapi
-uvicorn[standard]
-google-genai
-elevenlabs
-pydub
-sse-starlette
-python-dotenv
-edge-tts
-phonikud
-phonikud-onnx
-huggingface-hub
-numpy
-static-ffmpeg
-youtube-transcript-api
+# Pinned deliberately: an unpinned release of any of these breaks production
+# without a code change. Bump intentionally, not by redeploying.
+fastapi==0.140.13
+uvicorn[standard]==0.51.0
+google-genai==2.14.0
+elevenlabs==2.59.0
+pydub==0.25.1
+sse-starlette==3.4.6
+python-dotenv==1.2.2
+edge-tts==7.2.8
+phonikud==0.4.1
+phonikud-onnx==1.0.6
+huggingface-hub==1.25.1
+numpy==2.4.6
+static-ffmpeg==3.0
+youtube-transcript-api==1.2.4

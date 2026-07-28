@@ -7,7 +7,7 @@ export function useSession() {
   const [error, setError] = useState(null)
   const abortRef = useRef(null)
 
-  const generate = useCallback(async ({ topic, durationMinutes, language, mode, depth, ageGroup, bellsVolume }) => {
+  const generate = useCallback(async ({ topic, durationMinutes, language, mode, depth, ageGroup, bellsVolume, musicVolume }) => {
     setState('loading')
     setProgress({ message: '', percent: 0 })
     setError(null)
@@ -28,6 +28,7 @@ export function useSession() {
           depth: depth || 'standard',
           age_group: ageGroup || 'adults',
           bells_volume: bellsVolume ?? 50,
+          music_volume: musicVolume ?? 35,
         }),
         signal: controller.signal,
       })

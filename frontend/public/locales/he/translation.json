@@ -23,6 +23,9 @@
     "bells_label": "פעמונים ברקע",
     "bells_off": "כבוי",
     "bells_loud": "חזק",
+    "music_label": "מוזיקת רקע",
+    "music_off": "כבוי",
+    "music_loud": "חזק",
     "generate": "התחל מסע",
     "generate_hypnosis": "התחל היפנוזה",
     "generating": "יוצר את המדיטציה שלך..."
