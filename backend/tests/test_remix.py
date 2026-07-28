@@ -119,6 +119,64 @@ class TestRemix:
         assert filename == storage.mix_filename(session["id"], 25, 25)
 
 
+class TestAtomicWrites:
+    """
+    Mix names are derived from their inputs, so concurrent requests for the same
+    remix target the same path. Callers treat "the file exists" as "already
+    rendered", so a partial file would be served as if it were finished.
+    """
+
+    def test_a_failed_encode_leaves_no_file_behind(self, audio_root, session, monkeypatch):
+        target = storage.mix_path(session["id"], 33, 33)
+
+        def explode(self, *args, **kwargs):
+            raise RuntimeError("encoder died")
+
+        monkeypatch.setattr(AudioSegment, "export", explode)
+        with pytest.raises(RuntimeError):
+            tts_service._remix_blocking(session["id"], 33, 33)
+
+        assert not target.exists(), "a half-written mix must not be left in place"
+
+    def test_a_failed_encode_leaves_no_temp_files(self, audio_root, session, monkeypatch):
+        def explode(self, *args, **kwargs):
+            raise RuntimeError("encoder died")
+
+        monkeypatch.setattr(AudioSegment, "export", explode)
+        with pytest.raises(RuntimeError):
+            tts_service._remix_blocking(session["id"], 44, 44)
+
+        assert list(audio_root.glob(".*tmp")) == []
+
+    def test_the_previous_mix_survives_a_failed_re_encode(self, audio_root, session, monkeypatch):
+        # Render once, then fail while overwriting the same target.
+        tts_service._remix_blocking(session["id"], 55, 55)
+        target = storage.mix_path(session["id"], 55, 55)
+        good = target.read_bytes()
+        target.unlink()  # force the re-encode path
+        assert not target.exists()
+
+        def explode(self, *args, **kwargs):
+            raise RuntimeError("encoder died")
+
+        monkeypatch.setattr(AudioSegment, "export", explode)
+        with pytest.raises(RuntimeError):
+            tts_service._remix_blocking(session["id"], 55, 55)
+        assert not target.exists()
+        assert good  # the earlier render really did produce bytes
+
+    def test_a_completed_encode_leaves_only_the_final_file(self, audio_root, session):
+        tts_service._remix_blocking(session["id"], 66, 66)
+        assert storage.mix_path(session["id"], 66, 66).is_file()
+        assert list(audio_root.glob(".*tmp")) == []
+
+    def test_temp_files_are_never_servable(self, audio_root):
+        # Even if a crash strands one, it cannot be fetched over HTTP.
+        stranded = audio_root / ".meditation_abcdef123456b50m35.mp3.deadbeef.tmp"
+        stranded.write_bytes(b"partial")
+        assert storage.resolve(stranded.name) is None
+
+
 class TestSessionIds:
     @pytest.mark.parametrize("value", ["abcdef123456", "000000000000", "ffffffffffff"])
     def test_accepts_well_formed_ids(self, value):

@@ -96,7 +96,10 @@ function App() {
                 {/* Keyed on the URL so a remix loads the new mix from the start */}
                 <AudioPlayer key={result.audio_url} audioUrl={result.audio_url} />
                 {result.session_id && (
+                  /* Keyed per session so a new one starts from its own
+                     settings instead of the previous session's remix */
                   <AmbienceRemix
+                    key={result.session_id}
                     sessionId={result.session_id}
                     initialBells={mix.bells}
                     initialMusic={mix.music}

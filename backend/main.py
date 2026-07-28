@@ -41,7 +41,18 @@ log = logging.getLogger("guided_imagery")
 # Hard ceiling on simultaneous renders. The per-client limiter is the first line
 # of defence; this one holds even when client identity is spoofed, because it
 # counts work in flight rather than callers.
-_generation_slots = asyncio.Semaphore(MAX_CONCURRENT_GENERATIONS)
+#
+# Created on startup rather than at import: an asyncio primitive binds to the
+# first event loop that touches it and then refuses every other one, so building
+# it at import time ties the app to whichever loop happened to arrive first.
+_generation_slots: asyncio.Semaphore | None = None
+
+
+def _slots() -> asyncio.Semaphore:
+    global _generation_slots
+    if _generation_slots is None:
+        _generation_slots = asyncio.Semaphore(MAX_CONCURRENT_GENERATIONS)
+    return _generation_slots
 
 
 def _check_configuration() -> None:
@@ -76,7 +87,10 @@ def _check_configuration() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _generation_slots
     _check_configuration()
+    # Bind the capacity gate to the loop this app is actually running on.
+    _generation_slots = asyncio.Semaphore(MAX_CONCURRENT_GENERATIONS)
     storage.prune()  # clear anything a previous process left behind
     janitor = asyncio.create_task(storage.janitor_loop())
     sweeper = asyncio.create_task(_rate_limit_sweeper())
@@ -157,8 +171,9 @@ class TranslateRequest(BaseModel):
 async def create_session(request: Request, session: SessionRequest):
     # Acquired here rather than inside the generator so an overloaded server
     # answers with a real 429 instead of opening a stream that fails later.
+    slots = _slots()
     try:
-        await asyncio.wait_for(_generation_slots.acquire(), timeout=0.05)
+        await asyncio.wait_for(slots.acquire(), timeout=0.05)
     except asyncio.TimeoutError:
         raise HTTPException(
             status_code=429,
@@ -274,7 +289,7 @@ async def create_session(request: Request, session: SessionRequest):
             message = _safe_error(exc, "Failed to generate the session. Please try again.")
             yield {"event": "error", "data": json.dumps({"message": message}, ensure_ascii=False)}
         finally:
-            _generation_slots.release()
+            slots.release()
 
     return EventSourceResponse(event_generator())
 

@@ -25,6 +25,8 @@ import os
 import re
 import subprocess
 import tempfile
+from pathlib import Path
+from uuid import uuid4
 
 # Configure ffmpeg + ffprobe paths before importing pydub
 try:
@@ -327,7 +329,24 @@ def _mix(
 
 
 def _export(segment: AudioSegment, path) -> None:
-    segment.export(str(path), format="mp3", bitrate=OUTPUT_BITRATE)
+    """
+    Encode to a temporary file, then move it into place.
+
+    Mix filenames are derived from their inputs, so two clients asking for the
+    same remix at the same moment would otherwise encode into the same path and
+    interleave their writes. A half-written file also outlives a crash — and
+    since "the file exists" is exactly what callers treat as "already
+    rendered", it would then be served corrupt until its TTL expired.
+    os.replace is atomic within a filesystem, so a reader sees either the old
+    file or the complete new one.
+    """
+    path = Path(path)
+    tmp = path.with_name(f".{path.name}.{uuid4().hex[:8]}.tmp")
+    try:
+        segment.export(str(tmp), format="mp3", bitrate=OUTPUT_BITRATE)
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def _persist_voice(
@@ -340,16 +359,24 @@ def _persist_voice(
     recovered from the audio, so they travel in a sidecar next to the track.
     """
     _export(voice, storage.voice_path(session_id))
-    storage.voice_meta_path(session_id).write_text(
-        json.dumps(
-            {
-                "cues": cue_positions_ms,
-                "duration_ms": len(voice),
-                "language": language,
-            }
-        ),
-        encoding="utf-8",
-    )
+    # Written the same way for the same reason: _load_voice parses this, so a
+    # torn write would turn a good narration into a 500.
+    meta_path = storage.voice_meta_path(session_id)
+    tmp = meta_path.with_name(f".{meta_path.name}.{uuid4().hex[:8]}.tmp")
+    try:
+        tmp.write_text(
+            json.dumps(
+                {
+                    "cues": cue_positions_ms,
+                    "duration_ms": len(voice),
+                    "language": language,
+                }
+            ),
+            encoding="utf-8",
+        )
+        os.replace(tmp, meta_path)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def _decode(path) -> AudioSegment:
