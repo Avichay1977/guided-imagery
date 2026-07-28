@@ -13,7 +13,7 @@ Built on evidence from:
 Audience adaptations and clinical targets live in focus_areas.py.
 """
 
-from config import DEFAULT_PACE, pace_preset
+from config import DEFAULT_PACE, pace_preset, target_words
 from focus_areas import age_guidance, focus_guidance, neuro_guidance
 
 # ── shared constants ──────────────────────────────────────────────
@@ -120,13 +120,13 @@ def build_imagery_prompt(
     pace: str = DEFAULT_PACE,
 ) -> str:
     lang_name = "Hebrew" if language == "he" else "English"
-    target_words = int(duration_minutes * pace_preset(pace)["words_per_minute"])
+    words = target_words(duration_minutes, pace)
 
     prompt = f"""You are an expert clinical guided imagery therapist trained in evidence-based
 visualization therapy, Ericksonian language patterns, and neuroscience-informed relaxation.
 
 Write a complete guided imagery script in {lang_name} for: "{topic}".
-Duration: {duration_minutes} minutes (~{target_words} words excluding pause markers).
+Duration: {duration_minutes} minutes (~{words} words excluding pause markers).
 
 {_session_frame(duration_minutes, neuroprofile)}
 
@@ -253,7 +253,7 @@ def build_hypnosis_prompt(
 ) -> str:
     lang_name = "Hebrew" if language == "he" else "English"
     # Hypnosis is delivered a shade slower than imagery at any given pace.
-    target_words = int(duration_minutes * pace_preset(pace)["words_per_minute"] * 0.875)
+    words = target_words(duration_minutes, pace, density=0.875)
 
     depth_instructions = ""
     if depth == "light":
@@ -278,7 +278,7 @@ Dave Elman rapid induction, Elkins Hypnotic Relaxation Therapy, and modern neuro
 hypnotherapy. You create self-hypnosis audio sessions.
 
 Write a complete self-hypnosis session script in {lang_name} for: "{topic}".
-Duration: {duration_minutes} minutes (~{target_words} words excluding pause markers).
+Duration: {duration_minutes} minutes (~{words} words excluding pause markers).
 {depth_instructions}
 
 {_session_frame(duration_minutes, neuroprofile)}

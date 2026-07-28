@@ -113,17 +113,35 @@ PAUSE_DURATIONS = {
 # long silences are not restful for everyone — for a restless or ADHD listener
 # they are where attention leaves and frustration arrives, and a brisker,
 # more continuous delivery holds far better than a drifting one.
+# `words_per_minute` is the speaking rate. `speech_fraction` is how much of a
+# session is speech rather than silence — measured from real scripts, and lower
+# at slow paces because the same markers hold longer there. The two are
+# multiplied to get a word target, because asking for a full duration's worth of
+# speech and then adding the pauses on top overshoots by a fifth.
 PACE_PRESETS = {
-    "very_slow": {"rate": {"he": "-45%", "en": "-40%"}, "pause_scale": 1.30, "words_per_minute": 62},
-    "slow":      {"rate": {"he": "-35%", "en": "-30%"}, "pause_scale": 1.00, "words_per_minute": 80},
-    "natural":   {"rate": {"he": "-20%", "en": "-15%"}, "pause_scale": 0.72, "words_per_minute": 102},
-    "brisk":     {"rate": {"he": "-8%",  "en": "-5%"},  "pause_scale": 0.55, "words_per_minute": 124},
+    "very_slow": {"rate": {"he": "-45%", "en": "-40%"}, "pause_scale": 1.30, "words_per_minute": 62,  "speech_fraction": 0.68},
+    "slow":      {"rate": {"he": "-35%", "en": "-30%"}, "pause_scale": 1.00, "words_per_minute": 80,  "speech_fraction": 0.75},
+    "natural":   {"rate": {"he": "-20%", "en": "-15%"}, "pause_scale": 0.72, "words_per_minute": 102, "speech_fraction": 0.80},
+    "brisk":     {"rate": {"he": "-8%",  "en": "-5%"},  "pause_scale": 0.55, "words_per_minute": 124, "speech_fraction": 0.84},
 }
 DEFAULT_PACE = "slow"
 
 
 def pace_preset(pace: str) -> dict:
     return PACE_PRESETS.get(pace, PACE_PRESETS[DEFAULT_PACE])
+
+
+def target_words(duration_minutes: int, pace: str, density: float = 1.0) -> int:
+    """
+    How many spoken words fill `duration_minutes` at this pace.
+
+    `density` lets a mode ask for a slightly sparser script — hypnosis is
+    delivered a shade slower than imagery at the same nominal pace.
+    """
+    preset = pace_preset(pace)
+    return int(
+        duration_minutes * preset["words_per_minute"] * preset["speech_fraction"] * density
+    )
 
 
 def pause_durations_for(pace: str) -> dict:

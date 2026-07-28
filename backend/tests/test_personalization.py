@@ -7,6 +7,8 @@ reaches the prompt, and in particular that the neurodivergent adaptations
 override the generic relaxation advice rather than sitting next to it.
 """
 
+import re
+
 import pytest
 
 from config import DEFAULT_PACE, PACE_PRESETS, pace_preset, pause_durations_for
@@ -28,6 +30,13 @@ def prompt(**overrides):
     }
     args.update(overrides)
     return build_meditation_prompt(**args)
+
+
+def words_in(**overrides) -> int:
+    """The word target the prompt actually asks the model for."""
+    match = re.search(r"~(\d+) words", prompt(**overrides))
+    assert match, "prompt no longer states a word target"
+    return int(match.group(1))
 
 
 class TestFocusAreas:
@@ -198,13 +207,32 @@ class TestPace:
 
     def test_a_brisk_session_asks_for_more_words_than_a_slow_one(self):
         # Otherwise a faster voice would simply finish early.
-        import re
+        assert words_in(pace="brisk") > words_in(pace="slow") > words_in(pace="very_slow")
 
-        def words(pace):
-            match = re.search(r"~(\d+) words", prompt(pace=pace))
-            return int(match.group(1))
+    @pytest.mark.parametrize("pace", sorted(PACE_PRESETS))
+    def test_the_word_target_leaves_room_for_the_silences(self, pace):
+        """
+        Speech time plus silence time has to come out at the requested length.
 
-        assert words("brisk") > words("slow") > words("very_slow")
+        Asking for a full duration's worth of speech and then adding the pauses
+        on top overshoots by about a fifth, which is what this guards against.
+        """
+        minutes = 10
+        preset = PACE_PRESETS[pace]
+        speech_minutes = words_in(duration_minutes=minutes, pace=pace) / preset["words_per_minute"]
+        assert speech_minutes < minutes, "no room left for any silence at all"
+        # The remainder is the silence budget; it should be a sane slice, not
+        # most of the session and not a rounding error.
+        silence_share = 1 - speech_minutes / minutes
+        assert 0.1 < silence_share < 0.4
+
+    def test_the_target_scales_with_duration(self):
+        assert words_in(duration_minutes=20) == pytest.approx(
+            2 * words_in(duration_minutes=10), rel=0.02
+        )
+
+    def test_hypnosis_is_written_sparser_than_imagery(self):
+        assert words_in(mode="hypnosis") < words_in(mode="imagery")
 
     def test_moving_paces_tell_the_model_to_keep_talking(self):
         assert "DELIVERY PACE — MOVING" in prompt(pace="brisk")
