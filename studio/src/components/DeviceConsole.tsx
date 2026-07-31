@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ControlSlot } from "@/components/Controls";
 import { Meter } from "@/components/Meter";
 import { SignalFlow } from "@/components/SignalFlow";
+import { SweepPanel } from "@/components/SweepPanel";
 import { buildSystemPrompt, buildUserPrompt } from "@/lib/engine";
 import { isCloudEnabled } from "@/lib/supabase";
 import {
@@ -32,7 +33,7 @@ import {
   type RunResult,
 } from "@/lib/types";
 
-type Tab = "flow" | "prompt" | "history";
+type Tab = "flow" | "prompt" | "sweep" | "history";
 
 export function DeviceConsole({ baseDevice }: { baseDevice: Device }) {
   const [overrides, setOverrides] = useState<DeviceOverrides>({});
@@ -407,6 +408,7 @@ export function DeviceConsole({ baseDevice }: { baseDevice: Device }) {
             [
               ["flow", "שרשרת אותות"],
               ["prompt", "ההוראה שנשלחת"],
+              ["sweep", "בדיקת פקד"],
               ["history", `היסטוריה (${runs.length})`],
             ] as [Tab, string][]
           ).map(([id, label]) => (
@@ -443,6 +445,15 @@ export function DeviceConsole({ baseDevice }: { baseDevice: Device }) {
               {buildUserPrompt(device, inputs)}
             </pre>
           </div>
+        ) : null}
+
+        {tab === "sweep" ? (
+          <SweepPanel
+            device={device}
+            values={values}
+            autonomy={autonomy}
+            inputs={inputs}
+          />
         ) : null}
 
         {tab === "history" ? (
