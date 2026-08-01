@@ -31,6 +31,10 @@ jobs:
         working-directory: tool-forge
         run: npm ci
 
+      - name: Test
+        working-directory: tool-forge
+        run: npm test
+
       - name: Build
         working-directory: tool-forge
         run: npm run build
