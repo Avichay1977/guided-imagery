@@ -8,6 +8,8 @@ export default function SettingsPage() {
   const { settings, updateSettings, engine, tools, saveTool, audit, record, clearAudit } = useApp()
   const [keyDraft, setKeyDraft] = useState(settings.apiKey)
   const [clientIdDraft, setClientIdDraft] = useState(settings.googleClientId)
+  const [serverUrlDraft, setServerUrlDraft] = useState(settings.serverUrl)
+  const [serverTokenDraft, setServerTokenDraft] = useState(settings.serverToken)
   const [message, setMessage] = useState('')
   const [calendarError, setCalendarError] = useState('')
   const [connecting, setConnecting] = useState(false)
@@ -109,6 +111,62 @@ export default function SettingsPage() {
           />
           להישאר במצב הדגמה גם כשיש מפתח
         </label>
+
+        <div className="mt-5 border-t border-panel-800 pt-4">
+          <h2 className="text-sm font-semibold text-white">או: שרת שמחזיק את המפתח</h2>
+          <p className="mt-2 text-xs leading-relaxed text-panel-400">
+            כשמוגדרת כאן כתובת, הדפדפן <strong className="text-panel-200">לא מחזיק מפתח בכלל</strong>{' '}
+            — הוא שולח סוג בקשה וקלט, והשרת בונה את הפרומפט ומדבר עם Anthropic. הקוד נמצא ב-
+            <code dir="ltr">api/claude.ts</code> ומוכן לפריסה. זה המסלול הנדרש ברגע שיש משתמש שני.
+          </p>
+
+          <label className="mt-3 block">
+            <span className="mb-1 block text-sm text-panel-200">כתובת השרת</span>
+            <input
+              className="w-full rounded-lg border border-panel-700 bg-panel-950 px-3 py-2 font-mono text-xs text-panel-200 outline-none focus:border-signal-500"
+              dir="ltr"
+              placeholder="https://your-app.vercel.app/api/claude"
+              value={serverUrlDraft}
+              onChange={(e) => setServerUrlDraft(e.target.value)}
+            />
+          </label>
+
+          <label className="mt-2 block">
+            <span className="mb-1 block text-sm text-panel-200">אסימון גישה לשרת (אופציונלי)</span>
+            <input
+              className="w-full rounded-lg border border-panel-700 bg-panel-950 px-3 py-2 font-mono text-xs text-panel-200 outline-none focus:border-signal-500"
+              dir="ltr"
+              type="password"
+              placeholder="TOOLFORGE_ACCESS_TOKEN"
+              value={serverTokenDraft}
+              onChange={(e) => setServerTokenDraft(e.target.value)}
+            />
+          </label>
+
+          <button
+            type="button"
+            onClick={() => {
+              updateSettings({
+                serverUrl: serverUrlDraft.trim(),
+                serverToken: serverTokenDraft.trim(),
+              })
+              setMessage(
+                serverUrlDraft.trim()
+                  ? 'הבקשות יעברו דרך השרת. המפתח בדפדפן כבר לא בשימוש.'
+                  : 'הגדרת השרת נוקתה.',
+              )
+            }}
+            className="mt-3 rounded-lg border border-panel-700 px-4 py-2 text-sm text-panel-200 transition hover:border-signal-500"
+          >
+            שמירת הגדרות שרת
+          </button>
+
+          {settings.serverUrl && (
+            <p className="mt-3 rounded-lg border border-signal-600/50 bg-signal-600/10 px-3 py-2 text-xs text-signal-300">
+              פעיל: הבקשות עוברות דרך {settings.serverUrl} — המפתח שבשדה למעלה מתעלמים ממנו.
+            </p>
+          )}
+        </div>
 
         <p className="mt-3 text-xs text-panel-400">
           מצב נוכחי:{' '}

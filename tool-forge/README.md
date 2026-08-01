@@ -32,9 +32,28 @@
 
 **מצב Claude.** מזינים מפתח API בהגדרות, וכל פעולה רצה מול `claude-opus-5` עם structured outputs.
 
-> ⚠️ המפתח נשמר ב-localStorage ונשלח ישירות מהדפדפן ל-Anthropic (`dangerouslyAllowBrowser`).
-> זה מתאים לשימוש אישי במחשב שלכם בלבד. אל תפרסמו מופע עם מפתח מוטמע, ואל תשתמשו במפתח ארגוני —
-> מוצר שמשרת משתמשים אחרים צריך שרת ביניים שמחזיק את המפתח.
+> ⚠️ במסלול הזה המפתח נשמר ב-localStorage ונשלח ישירות מהדפדפן ל-Anthropic
+> (`dangerouslyAllowBrowser`). זה מתאים לשימוש אישי במחשב שלכם בלבד. למשתמש שני — המסלול הבא.
+
+### מסלול שלישי: שרת שמחזיק את המפתח
+
+כשמגדירים כתובת שרת בהגדרות, **הדפדפן לא מחזיק מפתח בכלל**. הוא שולח `kind` + קלט, והשרת בונה
+את הפרומפט ומדבר עם Anthropic:
+
+```
+דפדפן  →  { kind: 'buildSpec', args: [brief] }  →  api/claude.ts  →  Anthropic
+                                                    ANTHROPIC_API_KEY
+```
+
+`api/claude.ts` הוא Web Fetch handler רגיל — עובד כפונקציית Vercel (קובץ ב-`api/` נעשה endpoint
+אוטומטית), וגם ב-Cloudflare Workers או Deno Deploy. שתי ההגנות שהופכות אותו לשרת ולא לצינור פתוח:
+
+1. **הלקוח לא שולח פרומפט.** הוא שולח סוג בקשה וקלט, והשרת בונה את הבקשה מ-`src/engine/requests.ts`
+   — בדיוק אותו קוד שהלקוח היה מריץ. אי אפשר לבקש דרך הכתובת הזו משהו שהאפליקציה לא מייצרת בעצמה.
+2. **`TOOLFORGE_ACCESS_TOKEN`** — אם הוגדר, כל בקשה חייבת לשאת אותו בכותרת `x-toolforge-token`.
+
+משתני סביבה: `ANTHROPIC_API_KEY` (חובה), `TOOLFORGE_ACCESS_TOKEN` (מומלץ),
+`TOOLFORGE_ALLOWED_ORIGIN` (ברירת מחדל `*`).
 
 ## הרצה
 

@@ -11,6 +11,7 @@ import type {
   ToolState,
 } from '../types'
 import { newId } from '../engine/specSchema'
+import { connectionFrom, type Connection } from '../engine/transport'
 import {
   DEFAULT_SETTINGS,
   loadAudit,
@@ -30,6 +31,8 @@ interface AppValue {
   settings: Settings
   /** האם פעולות ירוצו מול Claude או במצב הדגמה */
   engine: 'claude' | 'demo'
+  /** המסלול אל המודל: מפתח בדפדפן, שרת, או כלום */
+  connection: Connection | null
   saveTool: (spec: ToolSpec) => void
   deleteTool: (toolId: string) => void
   getState: (toolId: string) => ToolState
@@ -74,13 +77,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const value = useMemo<AppValue>(() => {
-    const engine: 'claude' | 'demo' =
-      settings.engine === 'demo' || !settings.apiKey.trim() ? 'demo' : 'claude'
+    const connection = connectionFrom(settings)
+    const engine: 'claude' | 'demo' = settings.engine === 'demo' || !connection ? 'demo' : 'claude'
 
     return {
       tools,
       settings,
       engine,
+      connection,
 
       saveTool: (spec) =>
         setTools((prev) => {

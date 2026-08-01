@@ -8,7 +8,7 @@ import { SpecPreview } from '../components/SpecPreview'
 import type { ToolSpec } from '../types'
 
 export default function Build() {
-  const { engine, settings, saveTool } = useApp()
+  const { engine, connection, saveTool } = useApp()
   const navigate = useNavigate()
 
   const [brief, setBrief] = useState('')
@@ -25,7 +25,7 @@ export default function Build() {
 
     if (engine === 'claude') {
       try {
-        const built = await buildSpecWithClaude(brief, settings.apiKey)
+        const built = await buildSpecWithClaude(brief, connection!)
         setSpec(built)
         setNote('הלוח נבנה על ידי Claude לפי התיאור שלכם.')
         setBusy(false)

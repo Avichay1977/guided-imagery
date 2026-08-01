@@ -20,6 +20,7 @@ export default function Console() {
     tools,
     engine,
     settings,
+    connection,
     getState,
     setFieldValue,
     setControlValue,
@@ -78,7 +79,7 @@ export default function Console() {
               state.fieldValues,
               controlValues,
               state.items,
-              settings.apiKey,
+              connection!,
             )
           : runActionLocally(spec, action, state.fieldValues, controlValues, state.items)
 
@@ -123,7 +124,7 @@ export default function Console() {
     try {
       const draft =
         engine === 'claude'
-          ? await draftEventWithClaude(item, settings.apiKey).catch(() => draftEventLocally(item))
+          ? await draftEventWithClaude(item, connection!).catch(() => draftEventLocally(item))
           : draftEventLocally(item)
 
       let duplicateOf: string | undefined

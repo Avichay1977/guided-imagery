@@ -131,6 +131,13 @@ export interface Settings {
   apiKey: string
   /** ברירת מחדל: 'auto' — Claude אם יש מפתח, אחרת מצב הדגמה */
   engine: 'auto' | 'demo'
+  /**
+   * כתובת פונקציית השרת. כשהיא מוגדרת, הדפדפן לא מחזיק מפתח Anthropic בכלל
+   * והבקשות עוברות דרכה. זה המסלול הנדרש כשיש יותר ממשתמש אחד.
+   */
+  serverUrl: string
+  /** אסימון גישה לשרת, אם הגדרתם אחד */
+  serverToken: string
   /** Client ID של Google לחיבור היומן. לא סוד — מיועד לדפדפן. */
   googleClientId: string
   /**

@@ -1,6 +1,6 @@
-import Anthropic from '@anthropic-ai/sdk'
 import type { CollectionItem } from '../types'
 import { localTimeZone } from './googleCalendar'
+import { callClaude, type Connection } from './transport'
 
 /**
  * הפיכת פריט ברשימה לטיוטת אירוע יומן.
@@ -108,71 +108,33 @@ export function draftEventLocally(item: CollectionItem): EventDraft {
   }
 }
 
-const DRAFT_SCHEMA = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['summary', 'description', 'start', 'end', 'confidence', 'missing', 'source'],
-  properties: {
-    summary: { type: 'string', description: 'כותרת האירוע ביומן, קצרה וברורה' },
-    description: { type: 'string', description: 'פירוט קצר, או מחרוזת ריקה' },
-    start: {
-      type: 'string',
-      description: 'זמן התחלה מקומי בפורמט YYYY-MM-DDTHH:MM:SS, בלי אזור זמן',
-    },
-    end: { type: 'string', description: 'זמן סיום באותו פורמט' },
-    confidence: {
-      type: 'number',
-      description: 'מידת הוודאות במועד שנקבע, בין 0 ל-1. אל תנפח — 0.4 ומטה כשמנחשים',
-    },
-    missing: {
-      type: 'string',
-      description: 'מה לא היה אפשר לקבוע מהטקסט (למשל "שעה"), או מחרוזת ריקה',
-    },
-    source: { type: 'string', description: 'הקטע מהטקסט שממנו נגזר המועד' },
-  },
-} as const
 
 /** אותה משימה, אבל עם מודל — מטפל בניסוחים שהפענוח המקומי מפספס. */
 export async function draftEventWithClaude(
   item: CollectionItem,
-  apiKey: string,
+  connection: Connection,
 ): Promise<EventDraft> {
-  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true })
   const now = new Date()
+  const weekday = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'][now.getDay()]
 
-  const message = await client.messages.create({
-    model: 'claude-opus-5',
-    max_tokens: 4000,
-    system: `אתה ממיר פריט מרשימת מטלות לטיוטת אירוע ביומן.
-עכשיו: ${toLocalIso(now)} (${['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'][now.getDay()]}), אזור זמן ${localTimeZone()}.
-כללים: אם המועד לא נקבע במפורש — אל תנחש בביטחון. החזר את ההשערה הסבירה ביותר עם confidence נמוך ופרט ב-missing מה חסר.
-זמנים תמיד עתידיים ביחס לעכשיו. משך ברירת מחדל: שעה.`,
-    output_config: {
-      effort: 'low',
-      format: { type: 'json_schema', schema: DRAFT_SCHEMA as unknown as Record<string, unknown> },
-    },
-    messages: [
-      {
-        role: 'user',
-        content: `כותרת: ${item.title}\nחותמת: ${item.at ?? '(אין)'}\nפירוט: ${item.detail ?? '(אין)'}`,
-      },
-    ],
-  })
-
-  const text = message.content
-    .filter((block): block is Anthropic.TextBlock => block.type === 'text')
-    .map((block) => block.text)
-    .join('')
+  const text = await callClaude(connection, 'draftEvent', [
+    item,
+    toLocalIso(now),
+    weekday,
+    localTimeZone(),
+  ])
 
   const parsed = JSON.parse(text) as Partial<EventDraft>
   const fallback = draftEventLocally(item)
 
-  const start = typeof parsed.start === 'string' && !Number.isNaN(new Date(parsed.start).getTime())
-    ? parsed.start
-    : fallback.start
-  const end = typeof parsed.end === 'string' && !Number.isNaN(new Date(parsed.end).getTime())
-    ? parsed.end
-    : addMinutes(start, 60)
+  const start =
+    typeof parsed.start === 'string' && !Number.isNaN(new Date(parsed.start).getTime())
+      ? parsed.start
+      : fallback.start
+  const end =
+    typeof parsed.end === 'string' && !Number.isNaN(new Date(parsed.end).getTime())
+      ? parsed.end
+      : addMinutes(start, 60)
 
   return {
     summary: parsed.summary?.trim() || fallback.summary,

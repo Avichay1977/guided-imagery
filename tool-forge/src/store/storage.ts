@@ -12,6 +12,8 @@ const KEYS = {
 export const DEFAULT_SETTINGS: Settings = {
   apiKey: '',
   engine: 'auto',
+  serverUrl: '',
+  serverToken: '',
   googleClientId: '',
   // ברירת מחדל בטוחה: שום דבר לא יוצא החוצה עד שמכבים את זה ביודעין
   simulate: true,
@@ -65,6 +67,9 @@ export function loadSettings(): Settings {
   return {
     apiKey: typeof stored.apiKey === 'string' ? stored.apiKey : DEFAULT_SETTINGS.apiKey,
     engine: stored.engine === 'demo' ? 'demo' : 'auto',
+    serverUrl: typeof stored.serverUrl === 'string' ? stored.serverUrl : DEFAULT_SETTINGS.serverUrl,
+    serverToken:
+      typeof stored.serverToken === 'string' ? stored.serverToken : DEFAULT_SETTINGS.serverToken,
     googleClientId:
       typeof stored.googleClientId === 'string' ? stored.googleClientId : DEFAULT_SETTINGS.googleClientId,
     // רק ערך מפורש false מכבה סימולציה — כל מצב אחר נשאר בטוח
