@@ -5,6 +5,8 @@ import { FieldInput } from '../components/FieldInput'
 import { ControlWidget } from '../components/ControlWidget'
 import { ItemBoard } from '../components/ItemBoard'
 import { ApprovalQueue } from '../components/ApprovalQueue'
+import { PermissionsPanel } from '../components/PermissionsPanel'
+import { getCapability } from '../engine/capabilities'
 import { runActionLocally } from '../engine/localActions'
 import { describeApiError, renderPrompt, runActionWithClaude } from '../engine/claude'
 import { draftEventLocally, draftEventWithClaude, formatWhen } from '../engine/scheduling'
@@ -292,6 +294,28 @@ export default function Console() {
         <summary className="cursor-pointer text-sm text-panel-200">מתחת למכסה המנוע</summary>
 
         <div className="mt-4 space-y-4 text-xs text-panel-400">
+          <div>
+            <h3 className="mb-2 text-panel-200">מה הכלי הזה רשאי לעשות</h3>
+            <PermissionsPanel spec={spec} />
+          </div>
+
+          <div>
+            <h3 className="mb-1 text-panel-200">היכולות שמאחורי הכפתורים</h3>
+            <ul className="space-y-1">
+              {spec.actions.map((action) => {
+                const capability = getCapability(action.capability)
+                return (
+                  <li key={action.id}>
+                    <span className="text-panel-200">{action.label}</span>
+                    {' → '}
+                    <code className="text-signal-300">{action.capability}</code>
+                    {capability && <span className="text-panel-600"> · {capability.label}</span>}
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+
           <div>
             <h3 className="mb-1 text-panel-200">הפרומפט שיישלח בכל פעולה</h3>
             <ul className="space-y-2">

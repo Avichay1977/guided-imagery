@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import type { CollectionItem, SpecAction, ToolSpec } from '../types'
 import type { ActionResult } from './localActions'
 import { ACTION_RESULT_JSON_SCHEMA, TOOL_SPEC_JSON_SCHEMA, newId, normalizeSpec } from './specSchema'
+import { CAPABILITIES, isDirectlyRunnable } from './capabilities'
 
 const MODEL = 'claude-opus-5'
 
@@ -54,7 +55,14 @@ const BUILDER_SYSTEM = `אתה מעצב "כלים אישיים" — לוחות �
 - אוסף אחד (לרוב) שהוא הזיכרון של הכלי: מה שנכנס אליו נשאר ומצטבר.
 - עברית בכל הטקסטים שמוצגים למשתמש. מזהים (id) באנגלית ב-snake_case.
 - 1-3 שדות, 1-4 בקרות, 2-4 פעולות, 1-2 אוספים. אל תנפח.
-- אל תמציא יכולות שאין: אין גישה ליומן, למייל או לאינטרנט. הכלי עובד על מה שהמשתמש מדביק פנימה ומייצר טקסט ופריטים.`
+- כל פעולה חייבת לבחור capability מתוך הקטלוג הסגור למטה. אין יכולות אחרות; בקשה ליכולת שלא ברשימה פשוט לא תיווצר.
+
+הקטלוג:
+${CAPABILITIES.filter(isDirectlyRunnable)
+  .map((capability) => `- ${capability.id}: ${capability.description}`)
+  .join('\n')}
+
+פעולות שמשנות משהו מחוץ לאפליקציה (למשל הוספה ליומן) אינן כפתורים בלוח — הן מופעלות מפריט ועוברות תמיד דרך תור אישורים. אל תנסה ליצור כפתור כזה.`
 
 /** בונה ToolSpec מתיאור חופשי, באמצעות Claude. */
 export async function buildSpecWithClaude(brief: string, apiKey: string): Promise<ToolSpec> {

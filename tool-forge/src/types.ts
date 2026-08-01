@@ -51,6 +51,11 @@ export interface SpecAction {
   label: string
   /** אמוג'י יחיד שמופיע על הכפתור */
   icon?: string
+  /**
+   * היכולת מהקטלוג הסגור (engine/capabilities.ts). זה מה שקובע מה הפעולה
+   * *רשאית* לעשות; ה-prompt רק מכוון אותה בתוך הגבולות האלה.
+   */
+  capability: string
   /** הוראה ל-AI. תומכת בהחלפות {{fieldId}} ו-{{controlId}}. */
   prompt: string
   output: ActionOutput

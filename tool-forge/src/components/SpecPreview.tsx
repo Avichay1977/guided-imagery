@@ -1,4 +1,6 @@
 import type { ToolSpec } from '../types'
+import { getCapability } from '../engine/capabilities'
+import { PermissionsPanel } from './PermissionsPanel'
 
 /** תצוגה מקדימה של המפרט לפני שמירה — מה בדיוק ייבנה. */
 export function SpecPreview({ spec }: { spec: ToolSpec }) {
@@ -57,11 +59,7 @@ export function SpecPreview({ spec }: { spec: ToolSpec }) {
                   {action.label}
                   <span className="text-panel-600">
                     {' · '}
-                    {action.output === 'text'
-                      ? 'טקסט'
-                      : action.output === 'items'
-                        ? 'פריטים'
-                        : 'טקסט + פריטים'}
+                    {getCapability(action.capability)?.label ?? action.capability}
                   </span>
                 </div>
                 <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-panel-600">
@@ -69,6 +67,13 @@ export function SpecPreview({ spec }: { spec: ToolSpec }) {
                 </p>
               </div>
             ))}
+          </dd>
+        </div>
+
+        <div>
+          <dt className="mb-1 text-xs uppercase tracking-wide text-panel-600">הרשאות</dt>
+          <dd>
+            <PermissionsPanel spec={spec} />
           </dd>
         </div>
 

@@ -92,6 +92,7 @@ export const DOMAIN_PATTERNS: DomainPattern[] = [
       actions: [
         {
           id: 'to_fixes',
+          capability: 'extract.items',
           label: 'פרק לרשימת תיקונים',
           icon: '🧩',
           primary: true,
@@ -102,6 +103,7 @@ export const DOMAIN_PATTERNS: DomainPattern[] = [
         },
         {
           id: 'reply',
+          capability: 'compose.text',
           label: 'נסח תשובה ללקוח',
           icon: '✉️',
           output: 'text',
@@ -110,6 +112,7 @@ export const DOMAIN_PATTERNS: DomainPattern[] = [
         },
         {
           id: 'session_plan',
+          capability: 'plan',
           label: 'סדר סשן עבודה',
           icon: '🗺️',
           output: 'text',
@@ -195,6 +198,7 @@ export const DOMAIN_PATTERNS: DomainPattern[] = [
       actions: [
         {
           id: 'extract',
+          capability: 'extract.items',
           label: 'זהה פגישות',
           icon: '🔍',
           primary: true,
@@ -205,6 +209,7 @@ export const DOMAIN_PATTERNS: DomainPattern[] = [
         },
         {
           id: 'slots',
+          capability: 'plan',
           label: 'הצע שיבוץ',
           icon: '🧮',
           output: 'text',
@@ -213,6 +218,7 @@ export const DOMAIN_PATTERNS: DomainPattern[] = [
         },
         {
           id: 'confirm',
+          capability: 'compose.text',
           label: 'נסח הודעת אישור',
           icon: '✅',
           output: 'text',
@@ -292,6 +298,7 @@ export const DOMAIN_PATTERNS: DomainPattern[] = [
       actions: [
         {
           id: 'summarize',
+          capability: 'extract.items',
           label: 'סכם והוסף',
           icon: '📇',
           primary: true,
@@ -302,6 +309,7 @@ export const DOMAIN_PATTERNS: DomainPattern[] = [
         },
         {
           id: 'followup',
+          capability: 'compose.text',
           label: 'נסח פולואפ',
           icon: '📨',
           output: 'text',
@@ -310,6 +318,7 @@ export const DOMAIN_PATTERNS: DomainPattern[] = [
         },
         {
           id: 'today',
+          capability: 'plan',
           label: 'מה לעשות היום',
           icon: '🎯',
           output: 'text',
@@ -385,6 +394,7 @@ export const DOMAIN_PATTERNS: DomainPattern[] = [
       actions: [
         {
           id: 'breakdown',
+          capability: 'extract.items',
           label: 'פרק למשימות',
           icon: '🪓',
           primary: true,
@@ -395,6 +405,7 @@ export const DOMAIN_PATTERNS: DomainPattern[] = [
         },
         {
           id: 'next',
+          capability: 'plan',
           label: 'מה הצעד הבא',
           icon: '👉',
           output: 'text',
@@ -403,6 +414,7 @@ export const DOMAIN_PATTERNS: DomainPattern[] = [
         },
         {
           id: 'stuck',
+          capability: 'compose.text',
           label: 'אני תקוע',
           icon: '🧱',
           output: 'text',
@@ -488,6 +500,7 @@ export const DOMAIN_PATTERNS: DomainPattern[] = [
       actions: [
         {
           id: 'draft',
+          capability: 'extract.items',
           label: 'כתוב גרסאות',
           icon: '🖊️',
           primary: true,
@@ -498,6 +511,7 @@ export const DOMAIN_PATTERNS: DomainPattern[] = [
         },
         {
           id: 'sharpen',
+          capability: 'compose.text',
           label: 'חדד',
           icon: '🔪',
           output: 'text',
@@ -568,6 +582,7 @@ export const DOMAIN_PATTERNS: DomainPattern[] = [
       actions: [
         {
           id: 'cards',
+          capability: 'extract.items',
           label: 'צור כרטיסיות',
           icon: '🃏',
           primary: true,
@@ -578,6 +593,7 @@ export const DOMAIN_PATTERNS: DomainPattern[] = [
         },
         {
           id: 'quiz',
+          capability: 'compose.text',
           label: 'בחן אותי',
           icon: '❓',
           output: 'text',
@@ -586,6 +602,7 @@ export const DOMAIN_PATTERNS: DomainPattern[] = [
         },
         {
           id: 'gaps',
+          capability: 'summarize',
           label: 'איפה החורים',
           icon: '🕳️',
           output: 'text',
@@ -656,6 +673,7 @@ export const DOMAIN_PATTERNS: DomainPattern[] = [
       actions: [
         {
           id: 'record',
+          capability: 'extract.items',
           label: 'תעד',
           icon: '📝',
           primary: true,
@@ -666,6 +684,7 @@ export const DOMAIN_PATTERNS: DomainPattern[] = [
         },
         {
           id: 'trends',
+          capability: 'summarize',
           label: 'מה המגמה',
           icon: '📈',
           output: 'text',
@@ -674,6 +693,7 @@ export const DOMAIN_PATTERNS: DomainPattern[] = [
         },
         {
           id: 'next_week',
+          capability: 'plan',
           label: 'תכנון לשבוע הבא',
           icon: '🗓️',
           output: 'text',
@@ -742,6 +762,7 @@ export const DOMAIN_PATTERNS: DomainPattern[] = [
       actions: [
         {
           id: 'classify',
+          capability: 'classify',
           label: 'סווג הוצאות',
           icon: '🏷️',
           primary: true,
@@ -752,6 +773,7 @@ export const DOMAIN_PATTERNS: DomainPattern[] = [
         },
         {
           id: 'summary',
+          capability: 'summarize',
           label: 'תמונת מצב',
           icon: '📊',
           output: 'text',
@@ -813,6 +835,7 @@ export function genericPattern(): Omit<ToolSpec, 'id' | 'createdAt' | 'updatedAt
     actions: [
       {
         id: 'organize',
+        capability: 'extract.items',
         label: 'סדר לרשימה',
         icon: '🧩',
         primary: true,
@@ -823,6 +846,7 @@ export function genericPattern(): Omit<ToolSpec, 'id' | 'createdAt' | 'updatedAt
       },
       {
         id: 'respond',
+        capability: 'compose.text',
         label: 'נסח תגובה',
         icon: '✉️',
         output: 'text',

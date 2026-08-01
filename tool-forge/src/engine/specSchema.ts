@@ -1,5 +1,4 @@
 import type {
-  ActionOutput,
   ControlType,
   FieldType,
   SpecAction,
@@ -8,6 +7,13 @@ import type {
   SpecField,
   ToolSpec,
 } from '../types'
+import {
+  CAPABILITIES,
+  getCapability,
+  inferCapability,
+  isDirectlyRunnable,
+  type PermissionId,
+} from './capabilities'
 
 /**
  * הסכימה שנשלחת ל-Claude ב-structured outputs.
@@ -86,11 +92,18 @@ export const TOOL_SPEC_JSON_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['id', 'label', 'icon', 'prompt', 'output', 'target', 'primary'],
+        required: ['id', 'label', 'icon', 'capability', 'prompt', 'output', 'target', 'primary'],
         properties: {
           id: { type: 'string', description: 'מזהה באנגלית, snake_case' },
           label: { type: 'string' },
           icon: { type: 'string', description: 'אמוג׳י יחיד' },
+          capability: {
+            type: 'string',
+            enum: CAPABILITIES.filter(isDirectlyRunnable).map((capability) => capability.id),
+            description: CAPABILITIES.filter(isDirectlyRunnable)
+              .map((capability) => `${capability.id} — ${capability.description}`)
+              .join(' | '),
+          },
           prompt: {
             type: 'string',
             description:
@@ -157,7 +170,6 @@ export const ACTION_RESULT_JSON_SCHEMA = {
 
 const FIELD_TYPES: FieldType[] = ['text', 'longtext', 'select', 'date', 'number']
 const CONTROL_TYPES: ControlType[] = ['slider', 'toggle', 'choice']
-const OUTPUTS: ActionOutput[] = ['text', 'items', 'both']
 
 function str(value: unknown, fallback = ''): string {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback
@@ -248,19 +260,53 @@ function normalizeCollection(raw: unknown, index: number): SpecCollection {
   }
 }
 
-function normalizeAction(raw: unknown, index: number, collectionIds: string[]): SpecAction {
+/**
+ * מחזיר פעולה תקינה, או null אם היא לא עוברת את בדיקת הקטלוג.
+ *
+ * שתי בדיקות שהן הלב של המודל: היכולת חייבת להיות בקטלוג, והיא חייבת להיות
+ * כזו שהמנוע יודע להריץ מכפתור. יכולת שמשנה את העולם לא יכולה להיות כפתור —
+ * היא מופעלת מפריט ועוברת דרך תור האישורים.
+ */
+function normalizeAction(raw: unknown, index: number, collectionIds: string[]): SpecAction | null {
   const r = (raw ?? {}) as Record<string, unknown>
-  const output = OUTPUTS.includes(r.output as ActionOutput) ? (r.output as ActionOutput) : 'text'
+
+  const requested = str(r.capability)
+
+  // יכולת שנתבקשה במפורש ולא קיימת בקטלוג נדחית — לא מתורגמת לקרוב אליה.
+  // הסקה מותרת רק כשאין יכולת כלל, כלומר מפרט שנשמר לפני שהקטלוג נוצר.
+  const capability = requested
+    ? getCapability(requested)
+    : getCapability(inferCapability({ output: str(r.output), id: str(r.id), label: str(r.label) }))
+
+  if (!capability || !isDirectlyRunnable(capability)) return null
+
+  // היכולת היא מקור האמת לגבי סוג הפלט — לא מה שהמודל טען
+  const output = capability.output
   const target = slug(r.target, '')
+
   return {
     id: slug(r.id, `action_${index + 1}`),
     label: str(r.label, `פעולה ${index + 1}`),
     icon: str(r.icon) || '▶',
+    capability: capability.id,
     prompt: str(r.prompt, 'סכם את הקלט של המשתמש בצורה מעשית.'),
     output,
     target: collectionIds.includes(target) ? target : output === 'text' ? undefined : collectionIds[0],
     primary: r.primary === true,
   }
+}
+
+/** ההרשאות שהכלי דורש בפועל — נגזרות מהיכולות, לא מוצהרות בנפרד. */
+export function permissionsFor(spec: ToolSpec): PermissionId[] {
+  const used = new Set<PermissionId>()
+  for (const action of spec.actions) {
+    for (const permission of getCapability(action.capability)?.permissions ?? []) {
+      used.add(permission)
+    }
+  }
+  // כל כלי עם אוסף יכול לשלוח פריט לתור האישורים של היומן
+  if (spec.collections.length > 0) used.add('calendar.write')
+  return [...used]
 }
 
 /**
@@ -295,14 +341,17 @@ export function normalizeSpec(raw: unknown, meta: Partial<ToolSpec> = {}): ToolS
 
   const controls = (Array.isArray(r.controls) ? r.controls : []).map(normalizeControl)
 
-  const actions = (Array.isArray(r.actions) ? r.actions : []).map((a, i) =>
-    normalizeAction(a, i, collectionIds),
-  )
+  // פעולות שלא עברו את בדיקת הקטלוג נופלות כאן ופשוט לא נוצרות
+  const actions = (Array.isArray(r.actions) ? r.actions : [])
+    .map((a, i) => normalizeAction(a, i, collectionIds))
+    .filter((action): action is SpecAction => action !== null)
+
   if (actions.length === 0) {
     actions.push({
       id: 'process',
       label: 'עבד',
       icon: '⚡',
+      capability: 'extract.items',
       prompt: 'קח את הקלט של המשתמש והפוך אותו לרשימת פריטים מעשית.',
       output: 'both',
       target: collectionIds[0],
