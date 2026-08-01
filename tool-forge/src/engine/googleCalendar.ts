@@ -13,7 +13,17 @@
  */
 
 const GIS_SRC = 'https://accounts.google.com/gsi/client'
-const CALENDAR_API = 'https://www.googleapis.com/calendar/v3'
+let CALENDAR_API = 'https://www.googleapis.com/calendar/v3'
+
+/** לבדיקות בלבד: מפנה את הקריאות לשרת מקומי שמדמה את Google. */
+export function __setCalendarApiBase(url: string): void {
+  CALENDAR_API = url
+}
+
+/** לבדיקות בלבד: מזריק אסימון פעיל בלי לעבור דרך מסך ההסכמה. */
+export function __setToken(value: string, ttlMs = 3600_000): void {
+  token = { value, expiresAt: Date.now() + ttlMs }
+}
 /** רק יצירה וצפייה באירועים — לא קריאת כל היומן ולא הרשאות אחרות. */
 export const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events'
 

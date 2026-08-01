@@ -23,7 +23,7 @@ import {
  */
 
 export type Connection =
-  | { mode: 'direct'; apiKey: string }
+  | { mode: 'direct'; apiKey: string; baseUrl?: string }
   | { mode: 'server'; url: string; token: string }
 
 export function connectionFrom(settings: Settings): Connection | null {
@@ -81,7 +81,11 @@ export async function callClaude<K extends RequestKind>(
   args: RequestInput[K],
 ): Promise<string> {
   if (connection.mode === 'direct') {
-    const client = new Anthropic({ apiKey: connection.apiKey, dangerouslyAllowBrowser: true })
+    const client = new Anthropic({
+      apiKey: connection.apiKey,
+      dangerouslyAllowBrowser: true,
+      ...(connection.baseUrl ? { baseURL: connection.baseUrl } : {}),
+    })
     const request = buildRequest(kind, args)
     const message = await client.messages.create(request as Anthropic.MessageCreateParamsNonStreaming)
     if (message.stop_reason === 'refusal') throw new Error('המודל סירב לענות על הבקשה הזו.')
