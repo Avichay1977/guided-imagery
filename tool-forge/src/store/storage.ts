@@ -1,13 +1,21 @@
-import type { Settings, ToolSpec, ToolState } from '../types'
+import type { AuditEntry, PendingAction, Settings, ToolSpec, ToolState } from '../types'
 import { normalizeSpec } from '../engine/specSchema'
 
 const KEYS = {
   tools: 'toolforge.tools.v1',
   states: 'toolforge.states.v1',
   settings: 'toolforge.settings.v1',
+  pending: 'toolforge.pending.v1',
+  audit: 'toolforge.audit.v1',
 } as const
 
-export const DEFAULT_SETTINGS: Settings = { apiKey: '', engine: 'auto' }
+export const DEFAULT_SETTINGS: Settings = {
+  apiKey: '',
+  engine: 'auto',
+  googleClientId: '',
+  // ברירת מחדל בטוחה: שום דבר לא יוצא החוצה עד שמכבים את זה ביודעין
+  simulate: true,
+}
 
 function read<T>(key: string, fallback: T): T {
   try {
@@ -57,9 +65,31 @@ export function loadSettings(): Settings {
   return {
     apiKey: typeof stored.apiKey === 'string' ? stored.apiKey : DEFAULT_SETTINGS.apiKey,
     engine: stored.engine === 'demo' ? 'demo' : 'auto',
+    googleClientId:
+      typeof stored.googleClientId === 'string' ? stored.googleClientId : DEFAULT_SETTINGS.googleClientId,
+    // רק ערך מפורש false מכבה סימולציה — כל מצב אחר נשאר בטוח
+    simulate: stored.simulate === false ? false : true,
   }
 }
 
 export function saveSettings(settings: Settings): void {
   write(KEYS.settings, settings)
+}
+
+export function loadPending(): PendingAction[] {
+  const raw = read<PendingAction[]>(KEYS.pending, [])
+  return Array.isArray(raw) ? raw : []
+}
+
+export function savePending(pending: PendingAction[]): void {
+  write(KEYS.pending, pending)
+}
+
+export function loadAudit(): AuditEntry[] {
+  const raw = read<AuditEntry[]>(KEYS.audit, [])
+  return Array.isArray(raw) ? raw : []
+}
+
+export function saveAudit(audit: AuditEntry[]): void {
+  write(KEYS.audit, audit)
 }

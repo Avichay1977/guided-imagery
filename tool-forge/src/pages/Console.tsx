@@ -4,10 +4,13 @@ import { makeItem, resolveControlValues, useApp } from '../store/AppContext'
 import { FieldInput } from '../components/FieldInput'
 import { ControlWidget } from '../components/ControlWidget'
 import { ItemBoard } from '../components/ItemBoard'
+import { ApprovalQueue } from '../components/ApprovalQueue'
 import { runActionLocally } from '../engine/localActions'
 import { describeApiError, renderPrompt, runActionWithClaude } from '../engine/claude'
+import { draftEventLocally, draftEventWithClaude, formatWhen } from '../engine/scheduling'
+import { findDuplicate, isConnected } from '../engine/googleCalendar'
 import { newId, normalizeSpec } from '../engine/specSchema'
-import type { SpecAction } from '../types'
+import type { CollectionItem, SpecAction } from '../types'
 
 export default function Console() {
   const { toolId = '' } = useParams()
@@ -24,6 +27,8 @@ export default function Console() {
     clearItems,
     addLog,
     saveTool,
+    queueAction,
+    record,
   } = useApp()
 
   const spec = tools.find((t) => t.id === toolId)
@@ -34,6 +39,7 @@ export default function Console() {
   const [running, setRunning] = useState<string | null>(null)
   const [specDraft, setSpecDraft] = useState('')
   const [specError, setSpecError] = useState('')
+  const [scheduling, setScheduling] = useState<string | null>(null)
 
   const controlValues = useMemo(
     () => (spec ? resolveControlValues(spec, state.controlValues) : {}),
@@ -101,6 +107,48 @@ export default function Console() {
       setError(describeApiError(err))
     } finally {
       setRunning(null)
+    }
+  }
+
+  /**
+   * "הוסף ליומן" לא מוסיף ליומן. הוא מכין טיוטה, בודק אם כבר קיים אירוע חופף,
+   * ומכניס את הכול לתור האישורים. רק אישור מפורש שם שם משהו בפועל.
+   */
+  const schedule = async (item: CollectionItem) => {
+    if (!spec) return
+    setScheduling(item.id)
+    setError('')
+    try {
+      const draft =
+        engine === 'claude'
+          ? await draftEventWithClaude(item, settings.apiKey).catch(() => draftEventLocally(item))
+          : draftEventLocally(item)
+
+      let duplicateOf: string | undefined
+      if (!settings.simulate && isConnected()) {
+        const existing = await findDuplicate(draft.summary, draft.start).catch(() => null)
+        if (existing) duplicateOf = existing.id
+      }
+
+      queueAction({
+        id: newId('act'),
+        toolId: spec.id,
+        itemId: item.id,
+        type: 'calendar.createEvent',
+        draft,
+        status: 'pending',
+        duplicateOf,
+        createdAt: new Date().toISOString(),
+      })
+      record({
+        kind: 'info',
+        message: `הוכנה טיוטת אירוע: "${draft.summary}" ${formatWhen(draft.start)}`,
+        detail: `ממתין לאישור · מקור: ${draft.source}`,
+      })
+    } catch (err) {
+      setError(describeApiError(err))
+    } finally {
+      setScheduling(null)
     }
   }
 
@@ -226,6 +274,8 @@ export default function Console() {
         </section>
       )}
 
+      <ApprovalQueue toolId={spec.id} />
+
       {spec.collections.map((collection) => (
         <ItemBoard
           key={collection.id}
@@ -233,6 +283,8 @@ export default function Console() {
           items={state.items.filter((item) => item.collectionId === collection.id)}
           onUpdate={(itemId, patch) => updateItem(spec.id, itemId, patch)}
           onDelete={(itemId) => deleteItem(spec.id, itemId)}
+          onSchedule={(item) => void schedule(item)}
+          schedulingId={scheduling}
         />
       ))}
 

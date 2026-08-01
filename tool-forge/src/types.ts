@@ -126,6 +126,52 @@ export interface Settings {
   apiKey: string
   /** ברירת מחדל: 'auto' — Claude אם יש מפתח, אחרת מצב הדגמה */
   engine: 'auto' | 'demo'
+  /** Client ID של Google לחיבור היומן. לא סוד — מיועד לדפדפן. */
+  googleClientId: string
+  /**
+   * מצב סימולציה. ברירת המחדל היא true: פעולה חיצונית לא מתבצעת באמת
+   * עד שהמשתמש מכבה את זה במפורש.
+   */
+  simulate: boolean
+}
+
+/**
+ * פעולה חיצונית שממתינה להחלטה. שום דבר כאן לא מבוצע לבד —
+ * המשתמש רואה תצוגה מקדימה, ורק אישור מפורש מריץ אותה.
+ */
+export interface PendingAction {
+  id: string
+  toolId: string
+  itemId: string
+  type: 'calendar.createEvent'
+  /** הכותרת, המועד והפירוט שיישלחו — ניתנים לעריכה לפני אישור */
+  draft: {
+    summary: string
+    description: string
+    start: string
+    end: string
+    confidence: number
+    missing: string
+    source: string
+  }
+  status: 'pending' | 'simulated' | 'executed' | 'rejected' | 'failed' | 'undone'
+  /** מזהה האירוע שנוצר — מה שמאפשר ביטול */
+  eventId?: string
+  eventLink?: string
+  /** אירוע קיים שחופף, אם נמצא בבדיקה מקדימה */
+  duplicateOf?: string
+  error?: string
+  createdAt: string
+  decidedAt?: string
+}
+
+/** יומן מלא של מה שקרה — מי ביקש, מה אושר, מה בוצע. */
+export interface AuditEntry {
+  id: string
+  at: string
+  kind: 'info' | 'action' | 'warning' | 'error'
+  message: string
+  detail?: string
 }
 
 export const EMPTY_TOOL_STATE: ToolState = {

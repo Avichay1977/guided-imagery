@@ -1,13 +1,25 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { EMPTY_TOOL_STATE } from '../types'
-import type { CollectionItem, RunLogEntry, Settings, ToolSpec, ToolState } from '../types'
+import type {
+  AuditEntry,
+  CollectionItem,
+  PendingAction,
+  RunLogEntry,
+  Settings,
+  ToolSpec,
+  ToolState,
+} from '../types'
 import { newId } from '../engine/specSchema'
 import {
   DEFAULT_SETTINGS,
+  loadAudit,
+  loadPending,
   loadSettings,
   loadStates,
   loadTools,
+  saveAudit,
+  savePending,
   saveSettings,
   saveStates,
   saveTools,
@@ -29,6 +41,17 @@ interface AppValue {
   clearItems: (toolId: string) => void
   addLog: (toolId: string, entry: RunLogEntry) => void
   updateSettings: (patch: Partial<Settings>) => void
+
+  /** תור הפעולות החיצוניות שממתינות להחלטה */
+  pending: PendingAction[]
+  queueAction: (action: PendingAction) => void
+  updateAction: (actionId: string, patch: Partial<PendingAction>) => void
+  removeAction: (actionId: string) => void
+
+  /** יומן מלא של כל מה שקרה */
+  audit: AuditEntry[]
+  record: (entry: Omit<AuditEntry, 'id' | 'at'>) => void
+  clearAudit: () => void
 }
 
 const AppContext = createContext<AppValue | null>(null)
@@ -37,10 +60,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [tools, setTools] = useState<ToolSpec[]>(() => loadTools())
   const [states, setStates] = useState<Record<string, ToolState>>(() => loadStates())
   const [settings, setSettings] = useState<Settings>(() => loadSettings())
+  const [pending, setPending] = useState<PendingAction[]>(() => loadPending())
+  const [audit, setAudit] = useState<AuditEntry[]>(() => loadAudit())
 
   useEffect(() => saveTools(tools), [tools])
   useEffect(() => saveStates(states), [states])
   useEffect(() => saveSettings(settings), [settings])
+  useEffect(() => savePending(pending), [pending])
+  useEffect(() => saveAudit(audit), [audit])
 
   const patchState = useCallback((toolId: string, patch: (prev: ToolState) => ToolState) => {
     setStates((prev) => ({ ...prev, [toolId]: patch(prev[toolId] ?? EMPTY_TOOL_STATE) }))
@@ -109,8 +136,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
         patchState(toolId, (prev) => ({ ...prev, log: [entry, ...prev.log].slice(0, 30) })),
 
       updateSettings: (patch) => setSettings((prev) => ({ ...prev, ...patch })),
+
+      pending,
+      queueAction: (action) => setPending((prev) => [action, ...prev]),
+      updateAction: (actionId, patch) =>
+        setPending((prev) =>
+          prev.map((action) => (action.id === actionId ? { ...action, ...patch } : action)),
+        ),
+      removeAction: (actionId) => setPending((prev) => prev.filter((a) => a.id !== actionId)),
+
+      audit,
+      record: (entry) =>
+        setAudit((prev) =>
+          [{ ...entry, id: newId('log'), at: new Date().toISOString() }, ...prev].slice(0, 200),
+        ),
+      clearAudit: () => setAudit([]),
     }
-  }, [tools, states, settings, patchState])
+  }, [tools, states, settings, pending, audit, patchState])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }

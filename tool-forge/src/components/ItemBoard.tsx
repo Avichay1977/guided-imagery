@@ -6,11 +6,16 @@ export function ItemBoard({
   items,
   onUpdate,
   onDelete,
+  onSchedule,
+  schedulingId,
 }: {
   collection: SpecCollection
   items: CollectionItem[]
   onUpdate: (itemId: string, patch: Partial<CollectionItem>) => void
   onDelete: (itemId: string) => void
+  /** מכניס את הפריט לתור האישורים כאירוע יומן — לא מבצע דבר בעצמו */
+  onSchedule?: (item: CollectionItem) => void
+  schedulingId?: string | null
 }) {
   const [filter, setFilter] = useState<string>('הכול')
   const [expanded, setExpanded] = useState<string | null>(null)
@@ -98,6 +103,17 @@ export function ItemBoard({
                     {tag}
                   </span>
                 ))}
+
+                {onSchedule && (
+                  <button
+                    type="button"
+                    disabled={schedulingId !== null && schedulingId !== undefined}
+                    onClick={() => onSchedule(item)}
+                    className="ms-auto rounded-full border border-panel-700 px-2 py-0.5 text-[11px] text-panel-200 transition hover:border-signal-500 hover:text-signal-300 disabled:opacity-40"
+                  >
+                    {schedulingId === item.id ? 'מכין…' : '📅 הוסף ליומן'}
+                  </button>
+                )}
               </div>
 
               {expanded === item.id && item.detail && (
