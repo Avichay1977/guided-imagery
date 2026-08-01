@@ -138,7 +138,7 @@ describe('draftEventLocally — המערכת לא מנחשת', () => {
   })
 })
 
-describe('eventIdFor — מניעת כפילות מבנית', () => {
+describe('eventIdFor — שכבת ההגנה הראשונה מפני כפילות', () => {
   it('מייצר מזהה יציב לאותו פריט', () => {
     expect(eventIdFor('item_abc123')).toBe(eventIdFor('item_abc123'))
   })
@@ -147,10 +147,13 @@ describe('eventIdFor — מניעת כפילות מבנית', () => {
     expect(eventIdFor('item_a')).not.toBe(eventIdFor('item_b'))
   })
 
-  it('עומד בדרישת התווים של Google (base32hex, אורך 5–1024)', () => {
+  // הכללים אומתו מול מסמך ה-discovery של Google: schemas.Event.properties.id
+  it('עומד בדרישת התווים והאורך של Google (base32hex, 5–1024)', () => {
     for (const id of ['item_1', 'פריט', 'x', 'item_ABC-999', '🎛️']) {
       const eventId = eventIdFor(id)
-      expect(eventId).toMatch(/^[a-v0-9]{5,1024}$/)
+      expect(eventId).toMatch(/^[a-v0-9]+$/)
+      expect(eventId.length).toBeGreaterThanOrEqual(5)
+      expect(eventId.length).toBeLessThanOrEqual(1024)
     }
   })
 })
