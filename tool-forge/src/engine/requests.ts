@@ -14,7 +14,7 @@ import { EVENT_DRAFT_JSON_SCHEMA } from './scheduleSchema'
 export const MODEL = 'claude-opus-5'
 
 /** הצורות המותרות של בקשה. הלקוח שולח kind + קלט, לא פרומפט חופשי. */
-export type RequestKind = 'buildSpec' | 'runAction' | 'draftEvent'
+export type RequestKind = 'buildSpec' | 'runAction' | 'draftEvent' | 'probe'
 
 export interface ClaudeRequest {
   model: string
@@ -42,6 +42,32 @@ ${CAPABILITIES.filter(isDirectlyRunnable)
   .join('\n')}
 
 פעולות שמשנות משהו מחוץ לאפליקציה (למשל הוספה ליומן) אינן כפתורים בלוח — הן מופעלות מפריט ועוברות תמיד דרך תור אישורים. אל תנסה ליצור כפתור כזה.`
+
+/**
+ * בקשת בדיקה מינימלית. קיימת כדי שאפשר יהיה לאמת שלושה דברים בקריאה אחת:
+ * שהמפתח תקף, שהמודל זמין, ושה-structured outputs שלנו מתקבל — וזה בדיוק מה
+ * שאי אפשר היה לאמת בלי חשבון.
+ */
+export function buildProbeRequest(): ClaudeRequest {
+  return {
+    model: MODEL,
+    max_tokens: 256,
+    system: 'ענה בקצרה.',
+    output_config: {
+      effort: 'low',
+      format: {
+        type: 'json_schema',
+        schema: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['ok'],
+          properties: { ok: { type: 'boolean', description: 'תמיד true' } },
+        },
+      },
+    },
+    messages: [{ role: 'user', content: 'החזר {"ok": true}' }],
+  }
+}
 
 export function buildSpecRequest(brief: string): ClaudeRequest {
   return {

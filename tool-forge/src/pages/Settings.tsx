@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { useApp } from '../store/AppContext'
 import { normalizeSpec, newId } from '../engine/specSchema'
 import { CALENDAR_SCOPE, connect, disconnect, isConnected } from '../engine/googleCalendar'
+import { runDiagnostics, type CheckResult } from '../engine/diagnostics'
 import type { ToolSpec } from '../types'
 
 export default function SettingsPage() {
@@ -15,6 +16,25 @@ export default function SettingsPage() {
   const [connecting, setConnecting] = useState(false)
   const [connected, setConnected] = useState(isConnected())
   const fileInput = useRef<HTMLInputElement>(null)
+  const [checks, setChecks] = useState<CheckResult[] | null>(null)
+  const [checking, setChecking] = useState(false)
+
+  const check = async () => {
+    setChecking(true)
+    setChecks(null)
+    try {
+      const results = await runDiagnostics(settings)
+      setChecks(results)
+      const failed = results.filter((r) => r.status === 'fail').length
+      record({
+        kind: failed ? 'warning' : 'info',
+        message: failed ? `בדיקת חיבור: ${failed} כשלים` : 'בדיקת חיבור עברה',
+        detail: results.map((r) => `${r.label}: ${r.status}`).join(' · '),
+      })
+    } finally {
+      setChecking(false)
+    }
+  }
 
   const connectCalendar = async () => {
     setConnecting(true)
@@ -277,6 +297,55 @@ export default function SettingsPage() {
             <li>מדביקים כאן את ה-Client ID. אין צורך ב-client secret — ואסור להשתמש בו בדפדפן.</li>
           </ol>
         </details>
+      </section>
+
+      <section className="device rounded-xl p-5">
+        <h2 className="text-sm font-semibold text-white">בדיקת חיבור</h2>
+        <p className="mt-2 text-xs leading-relaxed text-panel-400">
+          מריץ קריאה אמיתית אחת ל-Claude ואחת ליומן, ואומר בדיוק מה נכשל ומה לעשות. הקריאה
+          ל-Claude זעירה (עד 256 טוקנים) ולא נוגעת בכלים שלכם; הקריאה ליומן היא קריאה בלבד.
+        </p>
+
+        <button
+          type="button"
+          onClick={() => void check()}
+          disabled={checking}
+          className="mt-3 rounded-lg bg-signal-500 px-4 py-2 text-sm font-semibold text-panel-950 transition hover:bg-signal-400 disabled:opacity-40"
+        >
+          {checking ? 'בודק…' : 'הרץ בדיקה'}
+        </button>
+
+        {checks && (
+          <ul className="mt-4 space-y-2">
+            {checks.map((result) => (
+              <li key={result.id} className="rounded-lg border border-panel-700 bg-panel-950 p-3">
+                <div className="flex items-start gap-2">
+                  <span
+                    aria-hidden
+                    className={
+                      result.status === 'ok'
+                        ? 'text-signal-400'
+                        : result.status === 'fail'
+                          ? 'text-red-400'
+                          : 'text-panel-600'
+                    }
+                  >
+                    {result.status === 'ok' ? '✓' : result.status === 'fail' ? '✕' : '–'}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm text-panel-200">{result.label}</div>
+                    <div className="mt-0.5 text-xs text-panel-400">{result.detail}</div>
+                    {result.fix && (
+                      <div className="mt-2 rounded-lg border border-amber-700/50 bg-amber-950/30 px-2 py-1.5 text-xs leading-relaxed text-amber-200">
+                        <strong>מה לעשות:</strong> {result.fix}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <section className="device rounded-xl p-5">

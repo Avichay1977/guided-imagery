@@ -88,7 +88,8 @@ export function isConnected(): boolean {
 export function disconnect(): void {
   const current = token?.value
   token = null
-  if (current && window.google?.accounts?.oauth2) {
+  // typeof — הקובץ נטען גם מחוץ לדפדפן (בדיקות, רינדור בצד שרת)
+  if (current && typeof window !== 'undefined' && window.google?.accounts?.oauth2) {
     window.google.accounts.oauth2.revoke(current)
   }
 }
@@ -160,6 +161,24 @@ export interface CalendarEvent {
   htmlLink?: string
   start?: { dateTime?: string; date?: string }
   end?: { dateTime?: string; date?: string }
+}
+
+/** קריאה מינימלית לקריאה בלבד — משמשת את בדיקת החיבור. */
+export async function probeCalendar(): Promise<number> {
+  const params = new URLSearchParams({
+    timeMin: new Date().toISOString(),
+    maxResults: '1',
+    singleEvents: 'true',
+  })
+  const result = await call<{ items?: unknown[] }>(
+    `/calendars/primary/events?${params.toString()}`,
+  )
+  return (result.items ?? []).length
+}
+
+/** לתצוגה בדוח הבדיקה בלבד. */
+export function calendarBase(): string {
+  return CALENDAR_API
 }
 
 export function localTimeZone(): string {

@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import {
   buildActionRequest,
   buildEventRequest,
+  buildProbeRequest,
   buildSpecRequest,
   type ClaudeRequest,
 } from '../src/engine/requests'
@@ -27,7 +28,7 @@ import {
  *   TOOLFORGE_ALLOWED_ORIGIN ברירת מחדל '*'
  */
 
-type Kind = 'buildSpec' | 'runAction' | 'draftEvent'
+type Kind = 'buildSpec' | 'runAction' | 'draftEvent' | 'probe'
 
 function json(body: unknown, status: number, origin: string): Response {
   return new Response(JSON.stringify(body), {
@@ -49,6 +50,8 @@ function buildRequest(kind: Kind, args: unknown[]): ClaudeRequest {
       return buildActionRequest(...(args as Parameters<typeof buildActionRequest>))
     case 'draftEvent':
       return buildEventRequest(...(args as Parameters<typeof buildEventRequest>))
+    case 'probe':
+      return buildProbeRequest()
     default:
       throw new Error(`סוג בקשה לא מוכר: ${String(kind)}`)
   }

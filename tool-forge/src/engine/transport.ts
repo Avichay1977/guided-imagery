@@ -3,6 +3,7 @@ import type { Settings } from '../types'
 import {
   buildActionRequest,
   buildEventRequest,
+  buildProbeRequest,
   buildSpecRequest,
   type ClaudeRequest,
   type RequestKind,
@@ -38,6 +39,7 @@ export interface RequestInput {
   buildSpec: Parameters<typeof buildSpecRequest>
   runAction: Parameters<typeof buildActionRequest>
   draftEvent: Parameters<typeof buildEventRequest>
+  probe: []
 }
 
 function buildRequest<K extends RequestKind>(kind: K, args: RequestInput[K]): ClaudeRequest {
@@ -46,6 +48,8 @@ function buildRequest<K extends RequestKind>(kind: K, args: RequestInput[K]): Cl
       return buildSpecRequest(...(args as RequestInput['buildSpec']))
     case 'runAction':
       return buildActionRequest(...(args as RequestInput['runAction']))
+    case 'probe':
+      return buildProbeRequest()
     default:
       return buildEventRequest(...(args as RequestInput['draftEvent']))
   }
