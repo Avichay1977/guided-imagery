@@ -32,10 +32,13 @@ export default function Console() {
     saveTool,
     queueAction,
     record,
+    versionsFor,
+    restoreVersion,
   } = useApp()
 
   const spec = tools.find((t) => t.id === toolId)
   const state = getState(toolId)
+  const history = versionsFor(toolId)
 
   const [output, setOutput] = useState('')
   const [error, setError] = useState('')
@@ -344,6 +347,44 @@ export default function Console() {
               </ul>
             </div>
           )}
+
+          <div>
+            <h3 className="mb-1 text-panel-200">גרסאות</h3>
+            {history.length === 0 ? (
+              <p className="text-panel-600">
+                עוד לא שינית את הכלי. מרגע שתשנה, כל גרסה קודמת תישמר כאן ואפשר יהיה לחזור אליה.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {history.map((entry) => (
+                  <li key={entry.id} className="rounded-lg bg-panel-950 p-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-panel-200">גרסה {entry.version}</span>
+                      <span className="text-panel-600">
+                        {new Date(entry.at).toLocaleString('he-IL')}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (confirm(`לחזור לגרסה ${entry.version}? הגרסה הנוכחית תישמר גם היא.`)) {
+                            restoreVersion(entry.id)
+                          }
+                        }}
+                        className="ms-auto rounded-lg border border-panel-700 px-2 py-0.5 text-[11px] text-panel-200 transition hover:border-signal-500 hover:text-signal-300"
+                      >
+                        שחזור
+                      </button>
+                    </div>
+                    <ul className="mt-1 space-y-0.5 text-panel-400">
+                      {entry.changes.map((change, index) => (
+                        <li key={index}>· {change}</li>
+                      ))}
+                    </ul>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
 
           <div>
             <h3 className="mb-1 text-panel-200">עריכת המפרט</h3>

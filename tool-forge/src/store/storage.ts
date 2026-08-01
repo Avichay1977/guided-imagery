@@ -1,4 +1,5 @@
 import type { AuditEntry, PendingAction, Settings, ToolSpec, ToolState } from '../types'
+import type { ToolVersion } from '../engine/versions'
 import { normalizeSpec } from '../engine/specSchema'
 
 const KEYS = {
@@ -7,6 +8,7 @@ const KEYS = {
   settings: 'toolforge.settings.v1',
   pending: 'toolforge.pending.v1',
   audit: 'toolforge.audit.v1',
+  versions: 'toolforge.versions.v1',
 } as const
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -97,4 +99,13 @@ export function loadAudit(): AuditEntry[] {
 
 export function saveAudit(audit: AuditEntry[]): void {
   write(KEYS.audit, audit)
+}
+
+export function loadVersions(): ToolVersion[] {
+  const raw = read<ToolVersion[]>(KEYS.versions, [])
+  return Array.isArray(raw) ? raw : []
+}
+
+export function saveVersions(versions: ToolVersion[]): void {
+  write(KEYS.versions, versions)
 }

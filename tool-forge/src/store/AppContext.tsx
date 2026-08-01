@@ -13,17 +13,25 @@ import type {
 import { newId } from '../engine/specSchema'
 import { connectionFrom, type Connection } from '../engine/transport'
 import {
+  MAX_VERSIONS_PER_TOOL,
+  describeChanges,
+  specsDiffer,
+  type ToolVersion,
+} from '../engine/versions'
+import {
   DEFAULT_SETTINGS,
   loadAudit,
   loadPending,
   loadSettings,
   loadStates,
   loadTools,
+  loadVersions,
   saveAudit,
   savePending,
   saveSettings,
   saveStates,
   saveTools,
+  saveVersions,
 } from './storage'
 
 interface AppValue {
@@ -51,6 +59,10 @@ interface AppValue {
   updateAction: (actionId: string, patch: Partial<PendingAction>) => void
   removeAction: (actionId: string) => void
 
+  /** גרסאות קודמות של כל כלי — מה השתנה ואיך חוזרים אחורה */
+  versionsFor: (toolId: string) => ToolVersion[]
+  restoreVersion: (versionId: string) => void
+
   /** יומן מלא של כל מה שקרה */
   audit: AuditEntry[]
   record: (entry: Omit<AuditEntry, 'id' | 'at'>) => void
@@ -65,12 +77,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<Settings>(() => loadSettings())
   const [pending, setPending] = useState<PendingAction[]>(() => loadPending())
   const [audit, setAudit] = useState<AuditEntry[]>(() => loadAudit())
+  const [versions, setVersions] = useState<ToolVersion[]>(() => loadVersions())
 
   useEffect(() => saveTools(tools), [tools])
   useEffect(() => saveStates(states), [states])
   useEffect(() => saveSettings(settings), [settings])
   useEffect(() => savePending(pending), [pending])
   useEffect(() => saveAudit(audit), [audit])
+  useEffect(() => saveVersions(versions), [versions])
 
   const patchState = useCallback((toolId: string, patch: (prev: ToolState) => ToolState) => {
     setStates((prev) => ({ ...prev, [toolId]: patch(prev[toolId] ?? EMPTY_TOOL_STATE) }))
@@ -91,6 +105,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const next = { ...spec, updatedAt: new Date().toISOString() }
           const index = prev.findIndex((t) => t.id === spec.id)
           if (index === -1) return [next, ...prev]
+
+          // שמירת הגרסה הקודמת לפני הדריסה — רק אם התוכן באמת השתנה
+          const previous = prev[index]
+          if (specsDiffer(previous, next)) {
+            setVersions((history) => {
+              const mine = history.filter((entry) => entry.toolId === spec.id)
+              const entry: ToolVersion = {
+                id: newId('ver'),
+                toolId: spec.id,
+                version: mine.length + 1,
+                spec: previous,
+                at: new Date().toISOString(),
+                changes: describeChanges(previous, next),
+              }
+              const kept = [entry, ...mine].slice(0, MAX_VERSIONS_PER_TOOL)
+              return [...history.filter((e) => e.toolId !== spec.id), ...kept]
+            })
+          }
+
           const copy = [...prev]
           copy[index] = next
           return copy
@@ -149,6 +182,55 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ),
       removeAction: (actionId) => setPending((prev) => prev.filter((a) => a.id !== actionId)),
 
+      versionsFor: (toolId) =>
+        versions
+          .filter((entry) => entry.toolId === toolId)
+          .sort((a, b) => b.version - a.version),
+
+      /**
+       * שחזור מחזיר את המפרט הישן דרך saveTool, ולכן הוא עצמו נשמר כגרסה חדשה.
+       * אפשר תמיד לבטל גם את השחזור.
+       */
+      restoreVersion: (versionId) => {
+        const entry = versions.find((v) => v.id === versionId)
+        if (!entry) return
+        setTools((prev) => {
+          const index = prev.findIndex((t) => t.id === entry.toolId)
+          if (index === -1) return prev
+          const current = prev[index]
+          const restored = { ...entry.spec, id: current.id, updatedAt: new Date().toISOString() }
+          if (specsDiffer(current, restored)) {
+            setVersions((history) => {
+              const mine = history.filter((v) => v.toolId === entry.toolId)
+              const snapshot: ToolVersion = {
+                id: newId('ver'),
+                toolId: entry.toolId,
+                version: mine.length + 1,
+                spec: current,
+                at: new Date().toISOString(),
+                changes: [`שוחזרה גרסה ${entry.version}`],
+              }
+              const kept = [snapshot, ...mine].slice(0, MAX_VERSIONS_PER_TOOL)
+              return [...history.filter((v) => v.toolId !== entry.toolId), ...kept]
+            })
+          }
+          const copy = [...prev]
+          copy[index] = restored
+          return copy
+        })
+        setAudit((prev) =>
+          [
+            {
+              id: newId('log'),
+              at: new Date().toISOString(),
+              kind: 'action' as const,
+              message: `שוחזרה גרסה ${entry.version} של "${entry.spec.name}"`,
+            },
+            ...prev,
+          ].slice(0, 200),
+        )
+      },
+
       audit,
       record: (entry) =>
         setAudit((prev) =>
@@ -156,7 +238,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ),
       clearAudit: () => setAudit([]),
     }
-  }, [tools, states, settings, pending, audit, patchState])
+  }, [tools, states, settings, pending, audit, versions, patchState])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }
