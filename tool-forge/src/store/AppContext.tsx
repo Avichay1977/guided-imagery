@@ -18,19 +18,24 @@ import {
   specsDiffer,
   type ToolVersion,
 } from '../engine/versions'
+import { appendUsage, type UsageEvent, type UsageKind } from '../engine/usage'
 import {
   DEFAULT_SETTINGS,
+  loadArchived,
   loadAudit,
   loadPending,
   loadSettings,
   loadStates,
   loadTools,
+  loadUsage,
   loadVersions,
+  saveArchived,
   saveAudit,
   savePending,
   saveSettings,
   saveStates,
   saveTools,
+  saveUsage,
   saveVersions,
 } from './storage'
 
@@ -63,6 +68,16 @@ interface AppValue {
   versionsFor: (toolId: string) => ToolVersion[]
   restoreVersion: (versionId: string) => void
 
+  /**
+   * יומן שימוש מקומי — מה נפתח ומתי. קיים כדי שההצעות יתבססו על מה שקרה
+   * ולא על ניחוש, ואינו יוצא מהמכשיר.
+   */
+  usage: UsageEvent[]
+  recordUsage: (toolId: string, kind: UsageKind) => void
+  /** כלים שהמשתמש בחר להוריד מהמדף. לא נמחקים. */
+  archived: string[]
+  setArchived: (toolId: string, value: boolean) => void
+
   /** יומן מלא של כל מה שקרה */
   audit: AuditEntry[]
   record: (entry: Omit<AuditEntry, 'id' | 'at'>) => void
@@ -78,6 +93,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [pending, setPending] = useState<PendingAction[]>(() => loadPending())
   const [audit, setAudit] = useState<AuditEntry[]>(() => loadAudit())
   const [versions, setVersions] = useState<ToolVersion[]>(() => loadVersions())
+  const [usage, setUsage] = useState<UsageEvent[]>(() => loadUsage())
+  const [archived, setArchivedList] = useState<string[]>(() => loadArchived())
 
   useEffect(() => saveTools(tools), [tools])
   useEffect(() => saveStates(states), [states])
@@ -85,6 +102,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => savePending(pending), [pending])
   useEffect(() => saveAudit(audit), [audit])
   useEffect(() => saveVersions(versions), [versions])
+  useEffect(() => saveUsage(usage), [usage])
+  useEffect(() => saveArchived(archived), [archived])
 
   const patchState = useCallback((toolId: string, patch: (prev: ToolState) => ToolState) => {
     setStates((prev) => ({ ...prev, [toolId]: patch(prev[toolId] ?? EMPTY_TOOL_STATE) }))
@@ -231,6 +250,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
         )
       },
 
+      usage,
+      recordUsage: (toolId, kind) =>
+        setUsage((prev) => appendUsage(prev, { at: new Date().toISOString(), toolId, kind })),
+      archived,
+      setArchived: (toolId, value) =>
+        setArchivedList((prev) =>
+          value ? (prev.includes(toolId) ? prev : [...prev, toolId]) : prev.filter((id) => id !== toolId),
+        ),
+
       audit,
       record: (entry) =>
         setAudit((prev) =>
@@ -238,7 +266,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ),
       clearAudit: () => setAudit([]),
     }
-  }, [tools, states, settings, pending, audit, versions, patchState])
+  }, [tools, states, settings, pending, audit, versions, usage, archived, patchState])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }

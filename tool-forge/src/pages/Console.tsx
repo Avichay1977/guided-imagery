@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { makeItem, resolveControlValues, useApp } from '../store/AppContext'
 import { FieldInput } from '../components/FieldInput'
@@ -34,6 +34,7 @@ export default function Console() {
     record,
     versionsFor,
     restoreVersion,
+    recordUsage,
   } = useApp()
 
   const spec = tools.find((t) => t.id === toolId)
@@ -46,6 +47,12 @@ export default function Console() {
   const [specDraft, setSpecDraft] = useState('')
   const [specError, setSpecError] = useState('')
   const [scheduling, setScheduling] = useState<string | null>(null)
+
+  // פתיחת כלי היא האירוע שממנו נגזרים הדפוסים — נרשם פעם אחת לכל כניסה
+  useEffect(() => {
+    if (toolId) recordUsage(toolId, 'open')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toolId])
 
   const controlValues = useMemo(
     () => (spec ? resolveControlValues(spec, state.controlValues) : {}),
@@ -72,6 +79,7 @@ export default function Console() {
 
     setRunning(action.id)
     setError('')
+    recordUsage(spec.id, 'run')
 
     try {
       const result =

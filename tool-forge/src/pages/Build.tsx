@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useApp } from '../store/AppContext'
 import { buildSpecLocally } from '../engine/localBuilder'
 import { buildSpecWithClaude, describeApiError } from '../engine/claude'
@@ -11,7 +11,9 @@ export default function Build() {
   const { engine, connection, saveTool } = useApp()
   const navigate = useNavigate()
 
-  const [brief, setBrief] = useState('')
+  // המשפט שנכתב במסך הריק ממשיך לכאן במקום להיכתב פעמיים
+  const [params] = useSearchParams()
+  const [brief, setBrief] = useState(() => params.get('brief') ?? '')
   const [spec, setSpec] = useState<ToolSpec | null>(null)
   const [note, setNote] = useState('')
   const [error, setError] = useState('')
