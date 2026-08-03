@@ -33,3 +33,8 @@ Thumbs.db
 spectrum-rights/node_modules/
 spectrum-rights/dist/
 spectrum-rights/tsconfig.tsbuildinfo
+
+# Tool Forge app
+tool-forge/node_modules/
+tool-forge/dist/
+tool-forge/tsconfig.tsbuildinfo

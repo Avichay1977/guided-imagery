@@ -40,4 +40,7 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: spectrum-rights/dist
+          # This app publishes to the root of gh-pages; without keep_files it would
+          # delete sibling apps deployed into subdirectories (e.g. /tool-forge).
+          keep_files: true
           commit_message: 'Deploy spectrum-rights: ${{ github.event.head_commit.message || github.sha }}'

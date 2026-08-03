@@ -1,0 +1,48 @@
+name: Deploy tool-forge to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tool-forge/**'
+      - '.github/workflows/deploy-tool-forge.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy-tool-forge
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tool-forge/package-lock.json
+
+      - name: Install dependencies
+        working-directory: tool-forge
+        run: npm ci
+
+      - name: Test
+        working-directory: tool-forge
+        run: npm test
+
+      - name: Build
+        working-directory: tool-forge
+        run: npm run build
+
+      - name: Publish to gh-pages branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: tool-forge/dist
+          destination_dir: tool-forge
+          commit_message: 'Deploy tool-forge: ${{ github.event.head_commit.message || github.sha }}'
