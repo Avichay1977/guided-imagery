@@ -1,5 +1,6 @@
 import type { AuditEntry, PendingAction, Settings, ToolSpec, ToolState } from '../types'
 import type { ToolVersion } from '../engine/versions'
+import type { UsageEvent } from '../engine/usage'
 import { normalizeSpec } from '../engine/specSchema'
 
 const KEYS = {
@@ -9,6 +10,8 @@ const KEYS = {
   pending: 'toolforge.pending.v1',
   audit: 'toolforge.audit.v1',
   versions: 'toolforge.versions.v1',
+  usage: 'toolforge.usage.v1',
+  archived: 'toolforge.archived.v1',
 } as const
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -108,4 +111,23 @@ export function loadVersions(): ToolVersion[] {
 
 export function saveVersions(versions: ToolVersion[]): void {
   write(KEYS.versions, versions)
+}
+
+export function loadUsage(): UsageEvent[] {
+  const raw = read<UsageEvent[]>(KEYS.usage, [])
+  return Array.isArray(raw) ? raw : []
+}
+
+export function saveUsage(usage: UsageEvent[]): void {
+  write(KEYS.usage, usage)
+}
+
+/** מזהי כלים שהמשתמש בחר לארכב — הם קיימים, רק לא על המדף */
+export function loadArchived(): string[] {
+  const raw = read<string[]>(KEYS.archived, [])
+  return Array.isArray(raw) ? raw.filter((id) => typeof id === 'string') : []
+}
+
+export function saveArchived(ids: string[]): void {
+  write(KEYS.archived, ids)
 }
