@@ -54,6 +54,23 @@ export default function Console() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [toolId])
 
+  /**
+   * תוכן שהגיע משיתוף חיצוני נכנס לשדה הטקסט הראשון ומחכה שם.
+   * לא מריצים כלום אוטומטית — פעולה מתחילה רק בלחיצה.
+   */
+  useEffect(() => {
+    const incoming = sessionStorage.getItem('toolforge.incoming')
+    if (!incoming || !spec) return
+    sessionStorage.removeItem('toolforge.incoming')
+    const target =
+      spec.fields.find((field) => field.type === 'longtext') ??
+      spec.fields.find((field) => field.type === 'text')
+    if (!target) return
+    const existing = state.fieldValues[target.id] ?? ''
+    setFieldValue(spec.id, target.id, existing ? `${existing}\n\n${incoming}` : incoming)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spec?.id])
+
   const controlValues = useMemo(
     () => (spec ? resolveControlValues(spec, state.controlValues) : {}),
     [spec, state.controlValues],

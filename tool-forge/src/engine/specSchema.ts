@@ -42,7 +42,7 @@ export const TOOL_SPEC_JSON_SCHEMA = {
         properties: {
           id: { type: 'string', description: 'מזהה באנגלית, snake_case' },
           label: { type: 'string' },
-          type: { type: 'string', enum: ['text', 'longtext', 'select', 'date', 'number'] },
+          type: { type: 'string', enum: ['text', 'longtext', 'select', 'date', 'number', 'image'] },
           placeholder: { type: 'string', description: 'טקסט רמז, או מחרוזת ריקה' },
           options: { type: 'array', items: { type: 'string' }, description: 'רק ל-select, אחרת []' },
           required: { type: 'boolean' },
@@ -168,7 +168,7 @@ export const ACTION_RESULT_JSON_SCHEMA = {
   },
 } as const
 
-const FIELD_TYPES: FieldType[] = ['text', 'longtext', 'select', 'date', 'number']
+const FIELD_TYPES: FieldType[] = ['text', 'longtext', 'select', 'date', 'number', 'image']
 const CONTROL_TYPES: ControlType[] = ['slider', 'toggle', 'choice']
 
 function str(value: unknown, fallback = ''): string {
