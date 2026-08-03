@@ -4,6 +4,7 @@ import Home from './pages/Home'
 import Build from './pages/Build'
 import Console from './pages/Console'
 import SettingsPage from './pages/Settings'
+import Share from './pages/Share'
 
 export default function App() {
   return (
@@ -15,6 +16,7 @@ export default function App() {
           <Route path="/build" element={<Build />} />
           <Route path="/tool/:toolId" element={<Console />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/share" element={<Share />} />
           <Route path="*" element={<Home />} />
         </Routes>
       </main>

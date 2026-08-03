@@ -2,6 +2,7 @@ import type { CollectionItem, SpecAction, ToolSpec } from '../types'
 import { ACTION_RESULT_JSON_SCHEMA, TOOL_SPEC_JSON_SCHEMA } from './specSchema'
 import { CAPABILITIES, isDirectlyRunnable } from './capabilities'
 import { EVENT_DRAFT_JSON_SCHEMA } from './scheduleSchema'
+import { isImageValue, parseDataUrl } from './images'
 
 /**
  * בניית הבקשות ל-Claude — במקום אחד, כדי ששני הצדדים ישתמשו באותו קוד בדיוק.
@@ -16,12 +17,17 @@ export const MODEL = 'claude-opus-5'
 /** הצורות המותרות של בקשה. הלקוח שולח kind + קלט, לא פרומפט חופשי. */
 export type RequestKind = 'buildSpec' | 'runAction' | 'draftEvent' | 'probe'
 
+/** בלוקי תוכן — טקסט תמיד, תמונה רק כשיש שדה תמונה שמולא */
+export type ContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
+
 export interface ClaudeRequest {
   model: string
   max_tokens: number
   system: string
   output_config: { effort: 'low' | 'medium' | 'high'; format: { type: 'json_schema'; schema: Record<string, unknown> } }
-  messages: Array<{ role: 'user'; content: string }>
+  messages: Array<{ role: 'user'; content: string | ContentBlock[] }>
 }
 
 const BUILDER_SYSTEM = `אתה מעצב "כלים אישיים" — לוחות שליטה קטנים מבוססי AI.
@@ -82,6 +88,27 @@ export function buildSpecRequest(brief: string): ClaudeRequest {
   }
 }
 
+/**
+ * אוסף את התמונות שהמשתמש העלה לשדות.
+ *
+ * ערך של שדה תמונה הוא data URL, ולכן אסור לתחוב אותו לתוך הפרומפט כטקסט:
+ * זו מחרוזת base64 באורך מאות אלפי תווים שתבזבז את כל החלון ולא תובן.
+ * במקום זה היא הופכת לבלוק image, והפרומפט מקבל שם קריא של השדה.
+ */
+function imageBlocks(spec: ToolSpec, values: Record<string, string>): ContentBlock[] {
+  const blocks: ContentBlock[] = []
+  for (const field of spec.fields) {
+    if (field.type !== 'image') continue
+    const parsed = parseDataUrl(values[field.id] ?? '')
+    if (!parsed) continue
+    blocks.push({
+      type: 'image',
+      source: { type: 'base64', media_type: parsed.mediaType, data: parsed.data },
+    })
+  }
+  return blocks
+}
+
 /** מחליף {{field_id}} בערכים בפועל של השדות והבקרות. */
 export function renderPrompt(
   prompt: string,
@@ -90,6 +117,8 @@ export function renderPrompt(
   controls: Record<string, number | boolean | string>,
 ): string {
   return prompt.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => {
+    // תמונה לא נכנסת לפרומפט כטקסט — היא נשלחת כבלוק נפרד
+    if (isImageValue(values[key] ?? '')) return '(התמונה המצורפת)'
     if (key in values) return values[key] || '(לא הוזן)'
     if (key in controls) {
       const control = spec.controls.find((c) => c.id === key)
@@ -159,18 +188,28 @@ ${
         schema: ACTION_RESULT_JSON_SCHEMA as unknown as Record<string, unknown>,
       },
     },
-    messages: [
-      {
-        role: 'user',
-        content: [
-          renderPrompt(action.prompt, spec, values, controls),
-          '',
-          '--- מצב הלוח כרגע ---',
-          itemsContext(spec, items),
-        ].join('\n'),
-      },
-    ],
+    messages: [{ role: 'user', content: actionContent(spec, action, values, controls, items) }],
   }
+}
+
+/** גוף ההודעה: תמונות קודם (המודל קורא אותן טוב יותר לפני ההוראה), ואז הטקסט. */
+function actionContent(
+  spec: ToolSpec,
+  action: SpecAction,
+  values: Record<string, string>,
+  controls: Record<string, number | boolean | string>,
+  items: CollectionItem[],
+): string | ContentBlock[] {
+  const text = [
+    renderPrompt(action.prompt, spec, values, controls),
+    '',
+    '--- מצב הלוח כרגע ---',
+    itemsContext(spec, items),
+  ].join('\n')
+
+  const images = imageBlocks(spec, values)
+  if (images.length === 0) return text
+  return [...images, { type: 'text', text }]
 }
 
 export function buildEventRequest(
