@@ -1,0 +1,45 @@
+name: Studio CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'studio/**'
+      - '.github/workflows/studio-ci.yml'
+  pull_request:
+    paths:
+      - 'studio/**'
+      - '.github/workflows/studio-ci.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: studio-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: studio/package-lock.json
+
+      - name: Install dependencies
+        working-directory: studio
+        run: npm ci
+
+      - name: Lint
+        working-directory: studio
+        run: npm run lint
+
+      - name: Typecheck
+        working-directory: studio
+        run: npx tsc --noEmit
+
+      - name: Build
+        working-directory: studio
+        run: npm run build
