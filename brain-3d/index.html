@@ -1,0 +1,717 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+    <meta name="description" content="מוח תלת-ממדי — כלי לימוד אינטראקטיבי של המוח האנושי בעברית. אונות, סינפסות ומבנה, בהדמיה חיה." />
+    <title>מוח תלת-ממדי · כלי לימוד</title>
+    <style>
+      :root {
+        --cyan: #22d3ee;
+        --purple: #a855f7;
+        --orange: #fb923c;
+        --bg-0: #05060d;
+        --bg-1: #0b0f1e;
+        --ink: #eef2ff;
+        --muted: #9aa3c0;
+        --panel: rgba(14, 18, 34, 0.72);
+        --border: rgba(120, 140, 220, 0.22);
+      }
+
+      * { box-sizing: border-box; }
+      html, body { height: 100%; margin: 0; }
+      body {
+        font-family: "Assistant", "Rubik", system-ui, -apple-system, "Segoe UI", sans-serif;
+        background: radial-gradient(120% 120% at 70% 10%, #10152b 0%, var(--bg-1) 45%, var(--bg-0) 100%);
+        color: var(--ink);
+        overflow: hidden;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      #scene { position: fixed; inset: 0; z-index: 0; }
+
+      /* ---- Header ---- */
+      .topbar {
+        position: fixed;
+        inset-block-start: 0;
+        inset-inline: 0;
+        z-index: 3;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 14px 18px;
+        background: linear-gradient(180deg, rgba(5, 6, 13, 0.85), rgba(5, 6, 13, 0));
+        pointer-events: none;
+      }
+      .brand { display: flex; align-items: center; gap: 10px; }
+      .dot {
+        width: 12px; height: 12px; border-radius: 50%;
+        background: conic-gradient(from 90deg, var(--cyan), var(--purple), var(--orange), var(--cyan));
+        box-shadow: 0 0 14px 2px rgba(168, 85, 247, 0.6);
+      }
+      .brand h1 { font-size: 17px; font-weight: 700; margin: 0; letter-spacing: 0.2px; }
+      .brand p { margin: 0; font-size: 12px; color: var(--muted); }
+
+      /* ---- Region panel ---- */
+      .panel {
+        position: fixed;
+        z-index: 3;
+        inset-block-end: 0;
+        inset-inline: 0;
+        padding: 14px 14px calc(14px + env(safe-area-inset-bottom));
+        background: linear-gradient(0deg, rgba(5, 6, 13, 0.92), rgba(5, 6, 13, 0));
+      }
+      .chips {
+        display: flex;
+        gap: 8px;
+        overflow-x: auto;
+        padding-block-end: 4px;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+      }
+      .chips::-webkit-scrollbar { display: none; }
+      .chip {
+        flex: 0 0 auto;
+        border: 1px solid var(--border);
+        background: var(--panel);
+        color: var(--ink);
+        font: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        padding: 9px 14px;
+        border-radius: 999px;
+        cursor: pointer;
+        backdrop-filter: blur(8px);
+        transition: transform 0.12s ease, border-color 0.2s ease, background 0.2s ease;
+        white-space: nowrap;
+      }
+      .chip:hover { transform: translateY(-1px); }
+      .chip[aria-pressed="true"] {
+        border-color: transparent;
+        background: linear-gradient(120deg, rgba(34, 211, 238, 0.28), rgba(168, 85, 247, 0.32), rgba(251, 146, 60, 0.28));
+        box-shadow: 0 0 0 1px rgba(168, 85, 247, 0.4), 0 6px 24px rgba(168, 85, 247, 0.25);
+      }
+      .chip .swatch {
+        display: inline-block;
+        width: 8px; height: 8px; border-radius: 50%;
+        margin-inline-start: 6px;
+        vertical-align: middle;
+      }
+
+      .card {
+        margin-block-start: 12px;
+        border: 1px solid var(--border);
+        background: var(--panel);
+        backdrop-filter: blur(14px);
+        border-radius: 18px;
+        padding: 16px 18px;
+        max-width: 560px;
+        margin-inline: auto;
+        transition: opacity 0.25s ease, transform 0.25s ease;
+      }
+      .card.hidden { opacity: 0; transform: translateY(8px); pointer-events: none; height: 0; padding: 0; margin: 0; overflow: hidden; }
+      .card h2 { margin: 0 0 2px; font-size: 18px; }
+      .card .latin { font-size: 12px; color: var(--muted); font-weight: 600; letter-spacing: 0.4px; }
+      .card p { margin: 10px 0 0; font-size: 14px; line-height: 1.6; color: #d7ddf5; }
+      .fns { display: flex; flex-wrap: wrap; gap: 6px; margin-block-start: 12px; }
+      .fns span {
+        font-size: 12px;
+        padding: 5px 10px;
+        border-radius: 8px;
+        background: rgba(120, 140, 220, 0.12);
+        border: 1px solid var(--border);
+        color: #c7cdec;
+      }
+
+      /* ---- Controls ---- */
+      .controls {
+        position: fixed;
+        z-index: 3;
+        inset-block-start: 62px;
+        inset-inline-start: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .ctl {
+        width: 42px; height: 42px;
+        display: grid; place-items: center;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: var(--panel);
+        color: var(--ink);
+        cursor: pointer;
+        backdrop-filter: blur(8px);
+        font-size: 18px;
+        transition: border-color 0.2s ease, transform 0.12s ease;
+      }
+      .ctl:hover { transform: translateY(-1px); border-color: rgba(168, 85, 247, 0.55); }
+      .ctl[aria-pressed="true"] { border-color: var(--purple); color: var(--cyan); }
+
+      .hint {
+        position: fixed;
+        z-index: 2;
+        inset-block-start: 50%;
+        inset-inline: 0;
+        text-align: center;
+        color: var(--muted);
+        font-size: 13px;
+        transform: translateY(-50%);
+        transition: opacity 0.6s ease;
+        pointer-events: none;
+      }
+
+      .loading {
+        position: fixed; inset: 0; z-index: 5;
+        display: grid; place-items: center;
+        background: var(--bg-0);
+        transition: opacity 0.6s ease;
+      }
+      .loading.gone { opacity: 0; pointer-events: none; }
+      .loading .pulse {
+        width: 54px; height: 54px; border-radius: 50%;
+        background: conic-gradient(from 0deg, var(--cyan), var(--purple), var(--orange), var(--cyan));
+        animation: spin 1.4s linear infinite;
+        filter: blur(1px);
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      @media (min-width: 820px) {
+        .brand h1 { font-size: 19px; }
+        .card p { font-size: 15px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="scene"></div>
+
+    <div class="topbar">
+      <div class="brand">
+        <span class="dot"></span>
+        <div>
+          <h1>מוח תלת-ממדי</h1>
+          <p>כלי לימוד אינטראקטיבי · געו במוח כדי לחקור</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button class="ctl" id="btn-rotate" aria-pressed="true" title="סיבוב אוטומטי">⟳</button>
+      <button class="ctl" id="btn-synapses" aria-pressed="true" title="נקודות סינפטיות">✦</button>
+      <button class="ctl" id="btn-reset" title="איפוס תצוגה">⌂</button>
+    </div>
+
+    <div class="hint" id="hint">גררו לסיבוב · צבטו לזום · בחרו אונה למטה</div>
+
+    <div class="panel">
+      <div class="chips" id="chips"></div>
+      <div class="card hidden" id="card">
+        <span class="latin" id="card-latin"></span>
+        <h2 id="card-title"></h2>
+        <p id="card-desc"></p>
+        <div class="fns" id="card-fns"></div>
+      </div>
+    </div>
+
+    <div class="loading" id="loading"><div class="pulse"></div></div>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+      }
+    </script>
+
+    <script type="module">
+      import * as THREE from 'three';
+      import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+      // ----------------------------------------------------------------
+      // Brain regions (Hebrew learning content)
+      // ----------------------------------------------------------------
+      const REGIONS = [
+        {
+          id: 'frontal',
+          name: 'האונה המצחית',
+          latin: 'Frontal Lobe',
+          color: 0x22d3ee,
+          dir: new THREE.Vector3(0.15, 0.55, 1.0),
+          desc: 'האזור הגדול ביותר בקליפת המוח, ממוקם מאחורי המצח. אחראי על החשיבה הגבוהה — תכנון, קבלת החלטות, שליטה עצמית ואישיות. כאן יושב גם המרכז המוטורי הראשי המפעיל את שרירי הגוף.',
+          fns: ['תכנון והחלטות', 'תנועה רצונית', 'ריכוז וקשב', 'אישיות'],
+        },
+        {
+          id: 'parietal',
+          name: 'האונה הקודקודית',
+          latin: 'Parietal Lobe',
+          color: 0x8b5cf6,
+          dir: new THREE.Vector3(0.2, 0.9, -0.15),
+          desc: 'ממוקמת בחלק העליון-אחורי של המוח. מעבדת תחושות מהגוף — מגע, חום, כאב ומיקום במרחב — וממזגת אותן לתמונה אחת של הסביבה סביבנו.',
+          fns: ['תחושה ומגע', 'תפיסה מרחבית', 'ניווט', 'עיבוד מספרים'],
+        },
+        {
+          id: 'temporal',
+          name: 'האונה הרקתית',
+          latin: 'Temporal Lobe',
+          color: 0xfb923c,
+          dir: new THREE.Vector3(1.0, -0.35, 0.25),
+          desc: 'ממוקמת בצדי המוח, בגובה הרקות. מרכז השמיעה והבנת השפה, וגם בית הזיכרון: ההיפוקמפוס שבתוכה הופך חוויות לזיכרונות ארוכי טווח.',
+          fns: ['שמיעה', 'הבנת שפה', 'זיכרון', 'זיהוי פנים'],
+        },
+        {
+          id: 'occipital',
+          name: 'האונה העורפית',
+          latin: 'Occipital Lobe',
+          color: 0x38bdf8,
+          dir: new THREE.Vector3(-0.1, 0.25, -1.0),
+          desc: 'ממוקמת בגב המוח. זהו מרכז הראייה — כאן מפוענחים האותות מהעיניים לצבע, צורה, תנועה ועומק, וכך נבנית התמונה שאנחנו "רואים".',
+          fns: ['ראייה', 'זיהוי צבע', 'תפיסת תנועה', 'עומק'],
+        },
+        {
+          id: 'cerebellum',
+          name: 'המוחון',
+          latin: 'Cerebellum',
+          color: 0xa855f7,
+          dir: new THREE.Vector3(0.0, -0.7, -0.85),
+          desc: '"המוח הקטן" שמתחת לאונה העורפית. מכייל את התנועה — שיווי משקל, קואורדינציה ותזמון מדויק. הוא גם לומד מיומנויות תנועה עד שהן הופכות אוטומטיות.',
+          fns: ['שיווי משקל', 'קואורדינציה', 'תזמון תנועה', 'למידה מוטורית'],
+        },
+        {
+          id: 'brainstem',
+          name: 'גזע המוח',
+          latin: 'Brainstem',
+          color: 0xf97316,
+          dir: new THREE.Vector3(0.0, -1.0, -0.15),
+          desc: 'הגשר בין המוח לחוט השדרה. שולט בתפקודים החיוניים שקורים ללא מחשבה — נשימה, קצב לב ולחץ דם — ומעביר את כל האותות בין המוח לגוף.',
+          fns: ['נשימה', 'קצב לב', 'לחץ דם', 'מעבר אותות'],
+        },
+      ];
+
+      // ----------------------------------------------------------------
+      // 3D simplex noise (public-domain style, seeded & deterministic)
+      // ----------------------------------------------------------------
+      function makeNoise3D(seed = 1337) {
+        const grad3 = [
+          [1,1,0],[-1,1,0],[1,-1,0],[-1,-1,0],
+          [1,0,1],[-1,0,1],[1,0,-1],[-1,0,-1],
+          [0,1,1],[0,-1,1],[0,1,-1],[0,-1,-1],
+        ];
+        const p = new Uint8Array(256);
+        for (let i = 0; i < 256; i++) p[i] = i;
+        let s = seed >>> 0;
+        const rnd = () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296;
+        for (let i = 255; i > 0; i--) {
+          const j = Math.floor(rnd() * (i + 1));
+          const t = p[i]; p[i] = p[j]; p[j] = t;
+        }
+        const perm = new Uint8Array(512);
+        const permMod12 = new Uint8Array(512);
+        for (let i = 0; i < 512; i++) { perm[i] = p[i & 255]; permMod12[i] = perm[i] % 12; }
+        const F3 = 1 / 3, G3 = 1 / 6;
+        return function (xin, yin, zin) {
+          let n0, n1, n2, n3;
+          const s3 = (xin + yin + zin) * F3;
+          const i = Math.floor(xin + s3), j = Math.floor(yin + s3), k = Math.floor(zin + s3);
+          const t = (i + j + k) * G3;
+          const x0 = xin - (i - t), y0 = yin - (j - t), z0 = zin - (k - t);
+          let i1, j1, k1, i2, j2, k2;
+          if (x0 >= y0) {
+            if (y0 >= z0) { i1=1;j1=0;k1=0;i2=1;j2=1;k2=0; }
+            else if (x0 >= z0) { i1=1;j1=0;k1=0;i2=1;j2=0;k2=1; }
+            else { i1=0;j1=0;k1=1;i2=1;j2=0;k2=1; }
+          } else {
+            if (y0 < z0) { i1=0;j1=0;k1=1;i2=0;j2=1;k2=1; }
+            else if (x0 < z0) { i1=0;j1=1;k1=0;i2=0;j2=1;k2=1; }
+            else { i1=0;j1=1;k1=0;i2=1;j2=1;k2=0; }
+          }
+          const x1=x0-i1+G3, y1=y0-j1+G3, z1=z0-k1+G3;
+          const x2=x0-i2+2*G3, y2=y0-j2+2*G3, z2=z0-k2+2*G3;
+          const x3=x0-1+3*G3, y3=y0-1+3*G3, z3=z0-1+3*G3;
+          const ii=i&255, jj=j&255, kk=k&255;
+          let t0=0.6-x0*x0-y0*y0-z0*z0;
+          if (t0<0) n0=0; else { t0*=t0; const g=grad3[permMod12[ii+perm[jj+perm[kk]]]]; n0=t0*t0*(g[0]*x0+g[1]*y0+g[2]*z0); }
+          let t1=0.6-x1*x1-y1*y1-z1*z1;
+          if (t1<0) n1=0; else { t1*=t1; const g=grad3[permMod12[ii+i1+perm[jj+j1+perm[kk+k1]]]]; n1=t1*t1*(g[0]*x1+g[1]*y1+g[2]*z1); }
+          let t2=0.6-x2*x2-y2*y2-z2*z2;
+          if (t2<0) n2=0; else { t2*=t2; const g=grad3[permMod12[ii+i2+perm[jj+j2+perm[kk+k2]]]]; n2=t2*t2*(g[0]*x2+g[1]*y2+g[2]*z2); }
+          let t3=0.6-x3*x3-y3*y3-z3*z3;
+          if (t3<0) n3=0; else { t3*=t3; const g=grad3[permMod12[ii+1+perm[jj+1+perm[kk+1]]]]; n3=t3*t3*(g[0]*x3+g[1]*y3+g[2]*z3); }
+          return 32 * (n0 + n1 + n2 + n3);
+        };
+      }
+
+      // ----------------------------------------------------------------
+      // Scene setup
+      // ----------------------------------------------------------------
+      const container = document.getElementById('scene');
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.15;
+      container.appendChild(renderer.domElement);
+
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 100);
+      const HOME = new THREE.Vector3(0, 0.6, 6.4);
+      camera.position.copy(HOME);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.06;
+      controls.enablePan = false;
+      controls.minDistance = 3.4;
+      controls.maxDistance = 10;
+      controls.autoRotate = true;
+      controls.autoRotateSpeed = 0.9;
+      controls.target.set(0, 0.15, 0);
+
+      // Soft ambient rim lights (used by the fresnel term visually)
+      scene.add(new THREE.AmbientLight(0x334466, 0.6));
+
+      // ----------------------------------------------------------------
+      // Brain mesh — noise-displaced icosphere with a sagittal fissure
+      // ----------------------------------------------------------------
+      const noise = makeNoise3D(20260713);
+      function fbm(x, y, z) {
+        let f = 0, amp = 0.5, freq = 1;
+        for (let o = 0; o < 4; o++) {
+          f += amp * noise(x * freq, y * freq, z * freq);
+          freq *= 2.05; amp *= 0.5;
+        }
+        return f;
+      }
+
+      const RADIUS = 2.0;
+      const geo = new THREE.IcosahedronGeometry(RADIUS, 64);
+      const pos = geo.attributes.position;
+      const elevation = new Float32Array(pos.count);
+      const v = new THREE.Vector3();
+      for (let i = 0; i < pos.count; i++) {
+        v.fromBufferAttribute(pos, i).normalize();
+        // Squash into a more brain-like ellipsoid (longer front-back, flatter bottom)
+        const shape = new THREE.Vector3(v.x * 0.92, v.y * 0.86, v.z * 1.06);
+        // Gyri / sulci — folds of the cortex
+        const gyri = fbm(shape.x * 2.4, shape.y * 2.4, shape.z * 2.4);
+        const fine = fbm(shape.x * 6.5, shape.y * 6.5, shape.z * 6.5) * 0.35;
+        let e = gyri + fine;
+        // Interhemispheric fissure: deep groove along the midline (x≈0), only on top
+        const midline = Math.exp(-(v.x * v.x) * 26) * Math.max(0, v.y + 0.15);
+        e -= midline * 0.9;
+        elevation[i] = e;
+        const r = RADIUS * (1 + e * 0.085);
+        v.copy(shape).setLength(r);
+        pos.setXYZ(i, v.x, v.y, v.z);
+      }
+      geo.setAttribute('elevation', new THREE.BufferAttribute(elevation, 1));
+      geo.computeVertexNormals();
+
+      const brainMat = new THREE.ShaderMaterial({
+        uniforms: {
+          uTime: { value: 0 },
+          uCyan: { value: new THREE.Color(0x22d3ee) },
+          uPurple: { value: new THREE.Color(0x7c3aed) },
+          uOrange: { value: new THREE.Color(0xfb923c) },
+          uHighlight: { value: new THREE.Vector3(0, 0, 0) },
+          uHighlightOn: { value: 0 },
+        },
+        vertexShader: /* glsl */ `
+          attribute float elevation;
+          varying float vElev;
+          varying vec3 vNormal;
+          varying vec3 vViewDir;
+          varying vec3 vWorldPos;
+          void main() {
+            vElev = elevation;
+            vNormal = normalize(normalMatrix * normal);
+            vec4 mv = modelViewMatrix * vec4(position, 1.0);
+            vViewDir = normalize(-mv.xyz);
+            vWorldPos = position;
+            gl_Position = projectionMatrix * mv;
+          }
+        `,
+        fragmentShader: /* glsl */ `
+          uniform float uTime;
+          uniform vec3 uCyan, uPurple, uOrange;
+          uniform vec3 uHighlight;
+          uniform float uHighlightOn;
+          varying float vElev;
+          varying vec3 vNormal;
+          varying vec3 vViewDir;
+          varying vec3 vWorldPos;
+          void main() {
+            // Palette: cyan -> purple -> orange by cortical elevation
+            float t = clamp(vElev * 1.4 + 0.5, 0.0, 1.0);
+            vec3 col = mix(uCyan, uPurple, smoothstep(0.0, 0.6, t));
+            col = mix(col, uOrange, smoothstep(0.55, 1.0, t));
+            // Sulci (valleys) sink darker for depth
+            col *= mix(0.35, 1.0, smoothstep(-0.7, 0.4, vElev));
+            // Fresnel rim glow
+            float fres = pow(1.0 - max(dot(normalize(vNormal), normalize(vViewDir)), 0.0), 2.4);
+            col += fres * mix(uCyan, uPurple, 0.5) * 0.9;
+            // Simple directional shading
+            float diff = max(dot(normalize(vNormal), normalize(vec3(0.4, 0.8, 0.6))), 0.0);
+            col *= 0.55 + 0.6 * diff;
+            // Region highlight: warm pulse near the selected direction
+            if (uHighlightOn > 0.5) {
+              float d = distance(normalize(vWorldPos), normalize(uHighlight));
+              float pulse = 0.5 + 0.5 * sin(uTime * 3.0);
+              float glow = smoothstep(0.9, 0.0, d) * (0.5 + 0.5 * pulse);
+              col += glow * uOrange * 1.2;
+            }
+            gl_FragColor = vec4(col, 1.0);
+          }
+        `,
+      });
+
+      const brain = new THREE.Mesh(geo, brainMat);
+      scene.add(brain);
+
+      // Faint outer glow shell
+      const glowMat = new THREE.ShaderMaterial({
+        transparent: true, blending: THREE.AdditiveBlending, side: THREE.BackSide, depthWrite: false,
+        uniforms: { uColor: { value: new THREE.Color(0x6d4bd0) } },
+        vertexShader: `varying vec3 vN; varying vec3 vV; void main(){ vN=normalize(normalMatrix*normal); vec4 mv=modelViewMatrix*vec4(position,1.0); vV=normalize(-mv.xyz); gl_Position=projectionMatrix*mv; }`,
+        fragmentShader: `uniform vec3 uColor; varying vec3 vN; varying vec3 vV; void main(){ float f=pow(1.0-abs(dot(vN,vV)),3.0); gl_FragColor=vec4(uColor,f*0.6); }`,
+      });
+      const glow = new THREE.Mesh(new THREE.IcosahedronGeometry(RADIUS * 1.14, 12), glowMat);
+      scene.add(glow);
+
+      // ----------------------------------------------------------------
+      // Synapses — glowing points that pulse across the surface
+      // ----------------------------------------------------------------
+      const SYN = 900;
+      const synPos = new Float32Array(SYN * 3);
+      const synPhase = new Float32Array(SYN);
+      const synColor = new Float32Array(SYN * 3);
+      const palette = [new THREE.Color(0x22d3ee), new THREE.Color(0xa855f7), new THREE.Color(0xfb923c)];
+      const tmp = new THREE.Vector3();
+      for (let i = 0; i < SYN; i++) {
+        // random point on the displaced surface
+        tmp.set(Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1).normalize();
+        const shape = new THREE.Vector3(tmp.x * 0.92, tmp.y * 0.86, tmp.z * 1.06);
+        const e = fbm(shape.x * 2.4, shape.y * 2.4, shape.z * 2.4);
+        const r = RADIUS * (1 + e * 0.085) * 1.012;
+        shape.setLength(r);
+        synPos.set([shape.x, shape.y, shape.z], i * 3);
+        synPhase[i] = Math.random() * Math.PI * 2;
+        const c = palette[(Math.random() * palette.length) | 0];
+        synColor.set([c.r, c.g, c.b], i * 3);
+      }
+      const synGeo = new THREE.BufferGeometry();
+      synGeo.setAttribute('position', new THREE.BufferAttribute(synPos, 3));
+      synGeo.setAttribute('aColor', new THREE.BufferAttribute(synColor, 3));
+      synGeo.setAttribute('aPhase', new THREE.BufferAttribute(synPhase, 1));
+      const synMat = new THREE.ShaderMaterial({
+        transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+        uniforms: { uTime: { value: 0 }, uSize: { value: 26 * renderer.getPixelRatio() } },
+        vertexShader: `
+          attribute vec3 aColor; attribute float aPhase; uniform float uTime; uniform float uSize;
+          varying vec3 vC; varying float vA;
+          void main(){
+            vC = aColor;
+            float pulse = 0.4 + 0.6 * pow(0.5 + 0.5*sin(uTime*2.2 + aPhase), 3.0);
+            vA = pulse;
+            vec4 mv = modelViewMatrix * vec4(position, 1.0);
+            gl_PointSize = uSize * pulse / -mv.z;
+            gl_Position = projectionMatrix * mv;
+          }
+        `,
+        fragmentShader: `
+          varying vec3 vC; varying float vA;
+          void main(){
+            vec2 uv = gl_PointCoord - 0.5;
+            float d = length(uv);
+            if (d > 0.5) discard;
+            float a = smoothstep(0.5, 0.0, d);
+            gl_FragColor = vec4(vC, a * vA);
+          }
+        `,
+      });
+      const synapses = new THREE.Points(synGeo, synMat);
+      scene.add(synapses);
+
+      // ----------------------------------------------------------------
+      // Region markers
+      // ----------------------------------------------------------------
+      const markerGroup = new THREE.Group();
+      scene.add(markerGroup);
+      const markers = REGIONS.map((reg) => {
+        const dir = reg.dir.clone().normalize();
+        const shape = new THREE.Vector3(dir.x * 0.92, dir.y * 0.86, dir.z * 1.06);
+        const e = fbm(shape.x * 2.4, shape.y * 2.4, shape.z * 2.4);
+        shape.setLength(RADIUS * (1 + e * 0.085) * 1.05);
+        const m = new THREE.Mesh(
+          new THREE.SphereGeometry(0.07, 16, 16),
+          new THREE.MeshBasicMaterial({ color: reg.color })
+        );
+        m.position.copy(shape);
+        m.userData = { reg, home: shape.clone(), surfaceDir: dir.clone() };
+        markerGroup.add(m);
+        return m;
+      });
+
+      // ----------------------------------------------------------------
+      // Starfield backdrop
+      // ----------------------------------------------------------------
+      const starGeo = new THREE.BufferGeometry();
+      const starPos = new Float32Array(600 * 3);
+      for (let i = 0; i < 600; i++) {
+        tmp.set(Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1).normalize().multiplyScalar(20 + Math.random() * 25);
+        starPos.set([tmp.x, tmp.y, tmp.z], i * 3);
+      }
+      starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+      scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0x556699, size: 0.06, transparent: true, opacity: 0.5 })));
+
+      // ----------------------------------------------------------------
+      // UI wiring
+      // ----------------------------------------------------------------
+      const chipsEl = document.getElementById('chips');
+      const card = document.getElementById('card');
+      const cardTitle = document.getElementById('card-title');
+      const cardLatin = document.getElementById('card-latin');
+      const cardDesc = document.getElementById('card-desc');
+      const cardFns = document.getElementById('card-fns');
+      const hint = document.getElementById('hint');
+      let active = null;
+
+      function toHex(n) { return '#' + n.toString(16).padStart(6, '0'); }
+
+      REGIONS.forEach((reg) => {
+        const b = document.createElement('button');
+        b.className = 'chip';
+        b.setAttribute('aria-pressed', 'false');
+        b.dataset.id = reg.id;
+        b.innerHTML = `${reg.name}<span class="swatch" style="background:${toHex(reg.color)}"></span>`;
+        b.addEventListener('click', () => selectRegion(reg.id));
+        chipsEl.appendChild(b);
+      });
+
+      function focusCamera(dir) {
+        const target = dir.clone().normalize().multiplyScalar(6.2);
+        target.y += 0.4;
+        const start = camera.position.clone();
+        const t0 = performance.now();
+        controls.autoRotate = false;
+        btnRotate.setAttribute('aria-pressed', 'false');
+        (function tween() {
+          const k = Math.min((performance.now() - t0) / 700, 1);
+          const e = 1 - Math.pow(1 - k, 3);
+          camera.position.lerpVectors(start, target, e);
+          if (k < 1) requestAnimationFrame(tween);
+        })();
+      }
+
+      function selectRegion(id) {
+        const reg = REGIONS.find((r) => r.id === id);
+        if (!reg) return;
+        if (active === id) { clearSelection(); return; }
+        active = id;
+        document.querySelectorAll('.chip').forEach((c) => c.setAttribute('aria-pressed', String(c.dataset.id === id)));
+        cardLatin.textContent = reg.latin;
+        cardTitle.textContent = reg.name;
+        cardTitle.style.color = toHex(reg.color);
+        cardDesc.textContent = reg.desc;
+        cardFns.innerHTML = reg.fns.map((f) => `<span>${f}</span>`).join('');
+        card.classList.remove('hidden');
+        brainMat.uniforms.uHighlight.value.copy(reg.dir).normalize();
+        brainMat.uniforms.uHighlightOn.value = 1;
+        focusCamera(reg.dir);
+        hint.style.opacity = '0';
+      }
+
+      function clearSelection() {
+        active = null;
+        document.querySelectorAll('.chip').forEach((c) => c.setAttribute('aria-pressed', 'false'));
+        card.classList.add('hidden');
+        brainMat.uniforms.uHighlightOn.value = 0;
+      }
+
+      // Raycast: tap a marker on the brain to select it
+      const raycaster = new THREE.Raycaster();
+      const pointer = new THREE.Vector2();
+      let downXY = null;
+      renderer.domElement.addEventListener('pointerdown', (e) => { downXY = [e.clientX, e.clientY]; });
+      renderer.domElement.addEventListener('pointerup', (e) => {
+        if (!downXY) return;
+        const moved = Math.hypot(e.clientX - downXY[0], e.clientY - downXY[1]);
+        downXY = null;
+        if (moved > 8) return; // was a drag, not a tap
+        pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
+        pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
+        raycaster.setFromCamera(pointer, camera);
+        const hit = raycaster.intersectObjects(markers, false)[0];
+        if (hit) selectRegion(hit.object.userData.reg.id);
+      });
+
+      // Controls
+      const btnRotate = document.getElementById('btn-rotate');
+      const btnSyn = document.getElementById('btn-synapses');
+      const btnReset = document.getElementById('btn-reset');
+      btnRotate.addEventListener('click', () => {
+        controls.autoRotate = !controls.autoRotate;
+        btnRotate.setAttribute('aria-pressed', String(controls.autoRotate));
+      });
+      btnSyn.addEventListener('click', () => {
+        synapses.visible = !synapses.visible;
+        btnSyn.setAttribute('aria-pressed', String(synapses.visible));
+      });
+      btnReset.addEventListener('click', () => {
+        clearSelection();
+        controls.autoRotate = true;
+        btnRotate.setAttribute('aria-pressed', 'true');
+        const start = camera.position.clone();
+        const t0 = performance.now();
+        (function tween() {
+          const k = Math.min((performance.now() - t0) / 600, 1);
+          const e = 1 - Math.pow(1 - k, 3);
+          camera.position.lerpVectors(start, HOME, e);
+          controls.target.lerp(new THREE.Vector3(0, 0.15, 0), e);
+          if (k < 1) requestAnimationFrame(tween);
+        })();
+      });
+
+      // ----------------------------------------------------------------
+      // Resize + render loop
+      // ----------------------------------------------------------------
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      const clock = new THREE.Clock();
+      function animate() {
+        const t = clock.getElapsedTime();
+        brainMat.uniforms.uTime.value = t;
+        synMat.uniforms.uTime.value = t;
+        markers.forEach((m, i) => {
+          const s = 1 + 0.18 * Math.sin(t * 3 + i);
+          m.scale.setScalar(active === m.userData.reg.id ? s * 1.5 : s);
+        });
+        controls.update();
+        renderer.render(scene, camera);
+        requestAnimationFrame(animate);
+      }
+      animate();
+
+      // Hide loader once the first frame is up
+      requestAnimationFrame(() => {
+        const l = document.getElementById('loading');
+        l.classList.add('gone');
+        setTimeout(() => l.remove(), 700);
+        setTimeout(() => { if (!active) hint.style.opacity = '0'; }, 6000);
+      });
+
+      // ----------------------------------------------------------------
+      // UPGRADE HOOK — swap the procedural cortex for the real photo.
+      // When the photographic brain image arrives, load it here and set
+      // it as a texture on `brainMat` (add a `uMap`/`map` uniform + sampler
+      // in the fragment shader, UV-project the icosphere), or replace the
+      // shader with MeshStandardMaterial({ map, displacementMap }). The
+      // geometry, synapses, markers and UI all stay as-is.
+      // ----------------------------------------------------------------
+    </script>
+  </body>
+</html>
