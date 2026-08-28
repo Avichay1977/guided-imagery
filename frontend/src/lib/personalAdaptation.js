@@ -1,4 +1,4 @@
-import { INTERVENTION_STYLES } from './interventionRecipes'
+import { INTERVENTION_STYLES } from './interventionRecipes.js'
 
 const STORAGE_KEY = 'guided_imagery_personal_adaptation_v1'
 const MAX_HISTORY = 120
