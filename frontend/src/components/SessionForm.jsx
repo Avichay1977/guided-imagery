@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import VolumeSlider from './VolumeSlider'
 import { getRecommendation } from '../lib/personalAdaptation'
@@ -19,31 +19,33 @@ const PACE_OPTIONS = ['very_slow', 'slow', 'natural', 'brisk']
 
 function SessionForm({ onSubmit }) {
   const { t } = useTranslation()
+  const initialRecommendation = getRecommendation('general')
   const [topic, setTopic] = useState('')
   const [duration, setDuration] = useState(10)
-  const [mode, setMode] = useState('imagery')
+  const [mode, setMode] = useState(initialRecommendation?.mode || 'imagery')
   const [depth, setDepth] = useState('medium')
   const [ageGroup, setAgeGroup] = useState('adult')
   const [focus, setFocus] = useState('general')
   const [neuroprofile, setNeuroprofile] = useState('none')
-  const [pace, setPace] = useState('slow')
+  const [pace, setPace] = useState(initialRecommendation?.pace || 'slow')
   const [bellsVolume, setBellsVolume] = useState(0)
   const [musicVolume, setMusicVolume] = useState(35)
   const [intensityBefore, setIntensityBefore] = useState(5)
   const [paceTouched, setPaceTouched] = useState(false)
   const [modeTouched, setModeTouched] = useState(false)
-  const [recommendation, setRecommendation] = useState(null)
+  const [recommendation, setRecommendation] = useState(initialRecommendation)
 
-  useEffect(() => {
-    const learned = getRecommendation(focus)
+  const handleFocusChange = (event) => {
+    const nextFocus = event.target.value
+    const learned = getRecommendation(nextFocus)
+    setFocus(nextFocus)
     setRecommendation(learned)
-    if (!learned) return
 
     // Learned settings are soft defaults only. Once the listener makes a
     // deliberate choice in this form, history no longer overrides it.
-    if (!paceTouched && learned.pace) setPace(learned.pace)
-    if (!modeTouched && learned.mode) setMode(learned.mode)
-  }, [focus, paceTouched, modeTouched])
+    if (learned?.pace && !paceTouched) setPace(learned.pace)
+    if (learned?.mode && !modeTouched) setMode(learned.mode)
+  }
 
   // A restless listener does better with a moving delivery than with long
   // silences, so suggest it — without overriding a deliberate choice.
@@ -71,7 +73,6 @@ function SessionForm({ onSubmit }) {
 
   return (
     <form className="session-form card" onSubmit={handleSubmit}>
-      {/* Mode Selector */}
       <div className="form-group">
         <label className="form-label">{t('form.mode_label')}</label>
         <div className="mode-selector">
@@ -100,7 +101,6 @@ function SessionForm({ onSubmit }) {
         </div>
       </div>
 
-      {/* Depth Selector - only for hypnosis */}
       {mode === 'hypnosis' && (
         <div className="form-group depth-group">
           <label className="form-label">{t('form.depth_label')}</label>
@@ -126,7 +126,7 @@ function SessionForm({ onSubmit }) {
           id="focus-select"
           className="form-input form-select"
           value={focus}
-          onChange={(e) => setFocus(e.target.value)}
+          onChange={handleFocusChange}
         >
           {FOCUS_OPTIONS.map((f) => (
             <option key={f} value={f}>{t(`form.focus_${f}`)}</option>
