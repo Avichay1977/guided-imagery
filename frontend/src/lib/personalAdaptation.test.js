@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   clearPersonalAdaptation,
+  getIntensityBand,
   getInterventionPlan,
   recordCompletedSession,
   saveOutcome,
@@ -28,7 +29,7 @@ class MemoryStorage {
 
 globalThis.localStorage = new MemoryStorage()
 
-function complete(id, style, after, helpfulness) {
+function complete(id, style, after, helpfulness, intensityBefore = 8) {
   recordCompletedSession(id, {
     focus: 'anxiety',
     mode: 'imagery',
@@ -38,35 +39,94 @@ function complete(id, style, after, helpfulness) {
     ageGroup: 'adult',
     interventionStyle: style,
     interventionSource: 'explore',
-    intensityBefore: 8,
+    intensityBefore,
   })
   assert.equal(saveOutcome(id, { intensityAfter: after, helpfulness }), true)
 }
 
-test('auto explores each safe recipe twice, then learns the best measured recipe', () => {
+test('intensity is reduced to three stable context bands', () => {
+  assert.equal(getIntensityBand(0), 'low')
+  assert.equal(getIntensityBand(3), 'low')
+  assert.equal(getIntensityBand(4), 'medium')
+  assert.equal(getIntensityBand(6), 'medium')
+  assert.equal(getIntensityBand(7), 'high')
+  assert.equal(getIntensityBand(10), 'high')
+  assert.equal(getIntensityBand(undefined), null)
+})
+
+test('auto still explores each safe recipe only twice, then learns', () => {
   clearPersonalAdaptation()
-  assert.deepEqual(getInterventionPlan('anxiety').style, 'balanced')
+  assert.equal(getInterventionPlan('anxiety', 8).style, 'balanced')
 
   complete('b1', 'balanced', 3, 5)
-  assert.equal(getInterventionPlan('anxiety').style, 'grounded')
+  assert.equal(getInterventionPlan('anxiety', 8).style, 'grounded')
 
   complete('g1', 'grounded', 5, 4)
-  assert.equal(getInterventionPlan('anxiety').style, 'rehearsal')
+  assert.equal(getInterventionPlan('anxiety', 8).style, 'rehearsal')
 
   complete('r1', 'rehearsal', 6, 3)
-  assert.equal(getInterventionPlan('anxiety').style, 'balanced')
+  assert.equal(getInterventionPlan('anxiety', 8).style, 'balanced')
 
   complete('b2', 'balanced', 2, 5)
-  assert.equal(getInterventionPlan('anxiety').style, 'grounded')
+  assert.equal(getInterventionPlan('anxiety', 8).style, 'grounded')
 
   complete('g2', 'grounded', 5, 4)
-  assert.equal(getInterventionPlan('anxiety').style, 'rehearsal')
+  assert.equal(getInterventionPlan('anxiety', 8).style, 'rehearsal')
 
   complete('r2', 'rehearsal', 6, 3)
-  const learned = getInterventionPlan('anxiety')
+  const learned = getInterventionPlan('anxiety', 8)
   assert.equal(learned.phase, 'learned')
   assert.equal(learned.style, 'balanced')
-  assert.equal(learned.samples, 6)
+  assert.equal(learned.totalSamples, 6)
+})
+
+test('the same focus can learn different recipes at low and high intensity', () => {
+  clearPersonalAdaptation()
+
+  complete('lb1', 'balanced', 0, 5, 3)
+  complete('lb2', 'balanced', 0, 5, 3)
+  complete('lg1', 'grounded', 2, 3, 3)
+  complete('lg2', 'grounded', 2, 3, 3)
+  complete('lr1', 'rehearsal', 1, 4, 3)
+  complete('lr2', 'rehearsal', 1, 4, 3)
+
+  complete('hb1', 'balanced', 7, 3, 9)
+  complete('hb2', 'balanced', 7, 3, 9)
+  complete('hg1', 'grounded', 2, 5, 9)
+  complete('hg2', 'grounded', 2, 5, 9)
+  complete('hr1', 'rehearsal', 6, 3, 9)
+  complete('hr2', 'rehearsal', 6, 3, 9)
+
+  const low = getInterventionPlan('anxiety', 2)
+  const high = getInterventionPlan('anxiety', 9)
+  const medium = getInterventionPlan('anxiety', 5)
+
+  assert.equal(low.phase, 'learned')
+  assert.equal(low.scope, 'context')
+  assert.equal(low.contextBand, 'low')
+  assert.equal(low.style, 'balanced')
+
+  assert.equal(high.scope, 'context')
+  assert.equal(high.contextBand, 'high')
+  assert.equal(high.style, 'grounded')
+
+  assert.equal(medium.scope, 'global')
+  assert.equal(medium.contextBand, 'medium')
+})
+
+test('one contextual recipe is not enough evidence to override the global plan', () => {
+  clearPersonalAdaptation()
+
+  complete('b1', 'balanced', 5, 3, 8)
+  complete('b2', 'balanced', 5, 3, 8)
+  complete('g1', 'grounded', 2, 5, 5)
+  complete('g2', 'grounded', 2, 5, 5)
+  complete('r1', 'rehearsal', 6, 2, 8)
+  complete('r2', 'rehearsal', 6, 2, 8)
+
+  const medium = getInterventionPlan('anxiety', 5)
+  assert.equal(medium.scope, 'global')
+  assert.equal(medium.eligibleContextStyles, 1)
 })
 
 test('free-text topic is never persisted in adaptation history', () => {
