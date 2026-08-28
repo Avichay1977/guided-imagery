@@ -18,6 +18,8 @@
     "age_adults": "Adults",
     "topic_label": "What would you like to work on?",
     "topic_placeholder": "Write freely... e.g., Release anxiety, Better sleep, Self confidence, Pain management",
+    "intensity_before": "How strong is it right now?",
+    "intensity_hint": "0 = barely noticeable, 10 = maximum intensity. This number is used only for personal learning on this device.",
     "duration_label": "Duration",
     "minutes": "min",
     "bells_label": "Background Bells",
@@ -60,11 +62,22 @@
     "pace_natural": "Natural",
     "pace_brisk": "Brisk",
     "pace_suggest": "Long silences are often restless rather than restful — Natural may hold attention better.",
+    "learned_from": "The app is softly using what it learned from {{count}} earlier sessions for this focus. A manual choice always wins.",
     "age_young_child": "4-7",
     "age_child": "8-12",
     "age_teen": "13-17",
     "age_adult": "Adult",
     "age_senior": "Older"
+  },
+  "feedback": {
+    "title": "What changed?",
+    "subtitle": "A few seconds now can make the next session more precise.",
+    "intensity_after": "How strong is it now?",
+    "helpfulness": "How helpful was the session? 1–5",
+    "save": "Save and learn",
+    "saved_title": "Saved.",
+    "saved_body": "Future sessions can use this result as weak evidence, never as a rule.",
+    "privacy": "Learning history stays in this browser on this device. Your free-text topic is not stored in the learning history."
   },
   "player": {
     "play": "Play",
