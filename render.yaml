@@ -1,21 +1,12 @@
-services:
-  - type: web
-    name: guided-imagery
-    runtime: python
-    python: "3.11"
-    buildCommand: |
-      cd frontend && npm install && npm run build && cd ../backend && pip install -r requirements.txt
-    startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT
-    envVars:
-      - key: GOOGLE_API_KEY
-        sync: false
-      - key: ELEVEN_API_KEY
-        sync: false
-      - key: PORT
-        value: 10000
-      - key: PYTHONIOENCODING
-        value: utf-8
+# The guided-imagery meditation app is deliberately NOT deployed here.
+#
+# It is a personal tool, run locally (see README). A public URL would leave the
+# Gemini and TTS keys reachable by anyone who found it, and the spend would be
+# on whoever owns those keys. Run it with `python backend/main.py` instead.
+#
+# Only the spectrum-rights static site is published from this repo.
 
+services:
   - type: web
     name: spectrum-rights
     runtime: static

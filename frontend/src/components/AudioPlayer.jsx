@@ -1,9 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { useTranslation } from 'react-i18next'
 import './AudioPlayer.css'
 
 function AudioPlayer({ audioUrl }) {
-  const { t } = useTranslation()
   const audioRef = useRef(null)
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrent] = useState(0)

@@ -5,9 +5,13 @@ Ensures all Hebrew text has proper vowel marks for accurate TTS pronunciation.
 
 import re
 import os
+import threading
 from functools import lru_cache
-from huggingface_hub import hf_hub_download
-from phonikud_onnx import Phonikud
+
+# Segments are synthesized in parallel worker threads, so the shared ONNX
+# session is serialized here. Inference is fast next to a TTS network round
+# trip, so this costs effectively nothing.
+_MODEL_LOCK = threading.Lock()
 
 # Phonikud adds phonetic markers we need to clean for TTS
 # | = morpheme boundary, ֫ = stress mark, ֽ = meteg
@@ -18,8 +22,17 @@ _PAUSE_PATTERN = re.compile(r'\[(pause|short_pause|long_pause|breath)\]')
 
 
 @lru_cache(maxsize=1)
-def _get_model() -> Phonikud:
-    """Lazy-load model once, cache forever."""
+def _get_model():
+    """
+    Lazy-load model once, cache forever.
+
+    The imports live in here rather than at module scope so that importing this
+    module — which the whole TTS path does — doesn't drag in onnxruntime for
+    English-only sessions or for tests that never touch nikud.
+    """
+    from huggingface_hub import hf_hub_download
+    from phonikud_onnx import Phonikud
+
     model_path = hf_hub_download(
         repo_id="thewh1teagle/phonikud-onnx",
         filename="phonikud-1.0.int8.onnx",
@@ -67,7 +80,8 @@ def add_nikud(script: str) -> str:
         if i % 2 == 0:
             # Text segment - apply nikud
             if part.strip():
-                vocalized = model.add_diacritics(part.strip())
+                with _MODEL_LOCK:
+                    vocalized = model.add_diacritics(part.strip())
                 # Clean phonetic markers that TTS doesn't need
                 vocalized = _PHONETIC_CLEANUP.sub('', vocalized)
                 result_parts.append(vocalized)
@@ -86,5 +100,6 @@ def add_nikud_to_segment(text: str) -> str:
         return text
 
     model = _get_model()
-    vocalized = model.add_diacritics(text.strip())
+    with _MODEL_LOCK:
+        vocalized = model.add_diacritics(text.strip())
     return _PHONETIC_CLEANUP.sub('', vocalized)

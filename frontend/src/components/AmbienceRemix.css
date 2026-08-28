@@ -1,0 +1,37 @@
+.remix-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--color-surface-border);
+  border-radius: var(--radius-sm);
+  padding: 1.25rem;
+  animation: fadeIn 0.4s ease;
+}
+
+.remix-title {
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.remix-hint,
+.remix-error {
+  font-size: 0.75rem;
+  text-align: center;
+  margin: -0.5rem 0 0;
+  line-height: 1.4;
+}
+
+.remix-hint {
+  color: var(--color-text-dim);
+}
+
+.remix-error {
+  color: #ff8080;
+}
+
+.remix-card .btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}

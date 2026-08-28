@@ -4,22 +4,46 @@ import { useSession } from './hooks/useSession'
 import SessionForm from './components/SessionForm'
 import ProgressLoader from './components/ProgressLoader'
 import AudioPlayer from './components/AudioPlayer'
+import AmbienceRemix from './components/AmbienceRemix'
+import SessionFeedback from './components/SessionFeedback'
 import ScriptDisplay from './components/ScriptDisplay'
 import LanguageToggle from './components/LanguageToggle'
 import YouTubeTranslator from './components/YouTubeTranslator'
 import MathCanvas from './components/MathCanvas/MathCanvas'
+import { recordCompletedSession } from './lib/personalAdaptation'
 
 function App() {
   const { t, i18n } = useTranslation()
-  const { state, progress, result, error, generate, reset } = useSession()
+  const { state, progress, result, error, remixing, generate, remix, reset } = useSession()
   const [page, setPage] = useState('home') // home | youtube | math
+  const [mix, setMix] = useState({ bells: 0, music: 35 })
+  const [lastRequest, setLastRequest] = useState(null)
 
   useEffect(() => {
     document.documentElement.dir = i18n.dir()
     document.documentElement.lang = i18n.language
   }, [i18n, i18n.language])
 
-  const handleGenerate = ({ topic, duration, mode, depth, ageGroup, bellsVolume }) => {
+  useEffect(() => {
+    if (!result?.session_id || !lastRequest) return
+    recordCompletedSession(result.session_id, lastRequest)
+  }, [result?.session_id, lastRequest])
+
+  const handleGenerate = ({
+    topic, duration, mode, depth, ageGroup, focus, neuroprofile, pace,
+    bellsVolume, musicVolume, intensityBefore,
+  }) => {
+    const requestSettings = {
+      duration,
+      mode,
+      ageGroup,
+      focus,
+      neuroprofile,
+      pace,
+      intensityBefore,
+    }
+    setLastRequest(requestSettings)
+    setMix({ bells: bellsVolume, music: musicVolume })
     generate({
       topic,
       durationMinutes: duration,
@@ -27,8 +51,17 @@ function App() {
       mode,
       depth,
       ageGroup,
+      focus,
+      neuroprofile,
+      pace,
       bellsVolume,
+      musicVolume,
     })
+  }
+
+  const handleReset = () => {
+    setLastRequest(null)
+    reset()
   }
 
   return (
@@ -80,7 +113,7 @@ function App() {
             {state === 'error' && (
               <div className="error-card">
                 <p className="error-message">{error || t('errors.generation_failed')}</p>
-                <button className="btn btn-primary" onClick={reset}>
+                <button className="btn btn-primary" onClick={handleReset}>
                   {t('form.generate')}
                 </button>
               </div>
@@ -88,9 +121,26 @@ function App() {
 
             {state === 'complete' && result && (
               <div className="result-section">
-                <AudioPlayer audioUrl={result.audio_url} />
+                <AudioPlayer key={result.audio_url} audioUrl={result.audio_url} />
+                {result.session_id && (
+                  <AmbienceRemix
+                    key={result.session_id}
+                    sessionId={result.session_id}
+                    initialBells={mix.bells}
+                    initialMusic={mix.music}
+                    onRemix={remix}
+                    busy={remixing}
+                  />
+                )}
+                {result.session_id && lastRequest && (
+                  <SessionFeedback
+                    key={`feedback-${result.session_id}`}
+                    sessionId={result.session_id}
+                    intensityBefore={lastRequest.intensityBefore}
+                  />
+                )}
                 <ScriptDisplay script={result.script} />
-                <button className="btn btn-secondary" onClick={reset}>
+                <button className="btn btn-secondary" onClick={handleReset}>
                   {t('player.new_session')}
                 </button>
               </div>

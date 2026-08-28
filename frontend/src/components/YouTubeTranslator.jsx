@@ -10,10 +10,17 @@ function YouTubeTranslator({ onBack }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [currentTime, setCurrentTime] = useState(0)
-  const [currentSub, setCurrentSub] = useState('')
-  const [currentOriginal, setCurrentOriginal] = useState('')
   const playerRef = useRef(null)
   const timerRef = useRef(null)
+
+  // The active subtitle is a pure function of playback position, so it is
+  // derived during render. Mirroring it into state from an effect meant every
+  // timer tick queued a second render pass.
+  const activeSegment = segments.find(
+    (s) => currentTime >= s.start && currentTime < s.start + s.duration
+  )
+  const currentSub = activeSegment?.text ?? ''
+  const currentOriginal = activeSegment?.original ?? ''
 
   // Load YouTube IFrame API
   useEffect(() => {
@@ -58,21 +65,6 @@ function YouTubeTranslator({ onBack }) {
     }
     waitForYT()
   }, [])
-
-  // Update current subtitle based on time
-  useEffect(() => {
-    if (!segments.length) return
-    const seg = segments.find(
-      (s) => currentTime >= s.start && currentTime < s.start + s.duration
-    )
-    if (seg) {
-      setCurrentSub(seg.text)
-      setCurrentOriginal(seg.original || '')
-    } else {
-      setCurrentSub('')
-      setCurrentOriginal('')
-    }
-  }, [currentTime, segments])
 
   // Cleanup
   useEffect(() => {
