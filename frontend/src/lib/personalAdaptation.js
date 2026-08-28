@@ -9,6 +9,10 @@ const MIN_CONTEXT_STYLES = 2
 const MIN_FINGERPRINT_STYLES = 2
 const MAX_FINGERPRINT_DISTANCE = 2
 const FINGERPRINT_KEYS = ['bodyActivation', 'thoughtLoop', 'movementNeed']
+const FOLLOW_UP_DELAY_MS = 30 * 60 * 1000
+const FOLLOW_UP_WINDOW_MS = 6 * 60 * 60 * 1000
+const IMMEDIATE_OUTCOME_WEIGHT = 0.25
+const LATER_OUTCOME_WEIGHT = 0.75
 
 function readHistory() {
   try {
@@ -25,6 +29,11 @@ function writeHistory(history) {
   } catch {
     // Personalization must never block a session if storage is unavailable.
   }
+}
+
+function isValidIntensity(value) {
+  const number = Number(value)
+  return Number.isFinite(number) && number >= 0 && number <= 10
 }
 
 export function getIntensityBand(value) {
@@ -51,6 +60,18 @@ export function stateFingerprintDistance(left, right) {
   const b = normalizeStateFingerprint(right)
   if (!a || !b) return null
   return FINGERPRINT_KEYS.reduce((sum, key) => sum + Math.abs(a[key] - b[key]), 0)
+}
+
+export function getEffectiveOutcomeDelta(row) {
+  if (!row || !Number.isFinite(row.intensityBefore) || !Number.isFinite(row.intensityAfter)) {
+    return null
+  }
+
+  const immediateDelta = row.intensityBefore - row.intensityAfter
+  if (!Number.isFinite(row.intensityLater)) return immediateDelta
+
+  const laterDelta = row.intensityBefore - row.intensityLater
+  return immediateDelta * IMMEDIATE_OUTCOME_WEIGHT + laterDelta * LATER_OUTCOME_WEIGHT
 }
 
 export function recordCompletedSession(sessionId, settings) {
@@ -84,24 +105,88 @@ export function recordCompletedSession(sessionId, settings) {
       createdAt: Date.now(),
       intensityAfter: null,
       helpfulness: null,
+      intensityLater: null,
+      followUpDueAt: null,
+      followUpAt: null,
+      followUpDismissedAt: null,
     })
   }
   writeHistory(history)
 }
 
-export function saveOutcome(sessionId, { intensityAfter, helpfulness }) {
+export function saveOutcome(sessionId, { intensityAfter, helpfulness }, now = Date.now()) {
+  const history = readHistory()
+  const index = history.findIndex((item) => item.sessionId === sessionId)
+  if (index < 0) return false
+
+  const after = Number(intensityAfter)
+  const helpful = Number(helpfulness)
+  if (!isValidIntensity(after) || !Number.isFinite(helpful) || helpful < 1 || helpful > 5) {
+    return false
+  }
+
+  history[index] = {
+    ...history[index],
+    intensityAfter: after,
+    helpfulness: helpful,
+    outcomeAt: now,
+    followUpDueAt: Number.isFinite(history[index].followUpDueAt)
+      ? history[index].followUpDueAt
+      : now + FOLLOW_UP_DELAY_MS,
+  }
+  writeHistory(history)
+  return true
+}
+
+export function saveDelayedOutcome(sessionId, { intensityLater }, now = Date.now()) {
+  const history = readHistory()
+  const index = history.findIndex((item) => item.sessionId === sessionId)
+  if (index < 0 || !isValidIntensity(intensityLater)) return false
+  if (!Number.isFinite(history[index].intensityAfter)) return false
+
+  history[index] = {
+    ...history[index],
+    intensityLater: Number(intensityLater),
+    followUpAt: now,
+    followUpDismissedAt: null,
+  }
+  writeHistory(history)
+  return true
+}
+
+export function dismissFollowUp(sessionId, now = Date.now()) {
   const history = readHistory()
   const index = history.findIndex((item) => item.sessionId === sessionId)
   if (index < 0) return false
 
   history[index] = {
     ...history[index],
-    intensityAfter: Number(intensityAfter),
-    helpfulness: Number(helpfulness),
-    outcomeAt: Date.now(),
+    followUpDismissedAt: now,
   }
   writeHistory(history)
   return true
+}
+
+export function getDueFollowUp(now = Date.now()) {
+  const candidates = readHistory()
+    .filter((item) =>
+      Number.isFinite(item.intensityAfter) &&
+      !Number.isFinite(item.intensityLater) &&
+      !Number.isFinite(item.followUpDismissedAt) &&
+      Number.isFinite(item.followUpDueAt) &&
+      item.followUpDueAt <= now &&
+      now <= item.followUpDueAt + FOLLOW_UP_WINDOW_MS
+    )
+    .sort((a, b) => b.followUpDueAt - a.followUpDueAt)
+
+  if (!candidates.length) return null
+  const item = candidates[0]
+  return {
+    sessionId: item.sessionId,
+    intensityBefore: item.intensityBefore,
+    intensityAfter: item.intensityAfter,
+    followUpDueAt: item.followUpDueAt,
+  }
 }
 
 function completedForFocus(focus) {
@@ -126,8 +211,9 @@ function groupScore(items, key, minSamples = MIN_OPTION_SAMPLES) {
     .map(([value, rows]) => ({
       value,
       samples: rows.length,
+      durableSamples: rows.filter((row) => Number.isFinite(row.intensityLater)).length,
       averageDelta: rows.reduce(
-        (sum, row) => sum + (row.intensityBefore - row.intensityAfter),
+        (sum, row) => sum + getEffectiveOutcomeDelta(row),
         0,
       ) / rows.length,
       averageHelpfulness: rows.reduce((sum, row) => sum + row.helpfulness, 0) / rows.length,
@@ -136,6 +222,7 @@ function groupScore(items, key, minSamples = MIN_OPTION_SAMPLES) {
     .sort((a, b) =>
       b.averageDelta - a.averageDelta ||
       b.averageHelpfulness - a.averageHelpfulness ||
+      b.durableSamples - a.durableSamples ||
       b.samples - a.samples
     )
 }
@@ -156,10 +243,11 @@ function weightedFingerprintScore(items, targetFingerprint) {
       return {
         value,
         samples: rows.length,
+        durableSamples: rows.filter((row) => Number.isFinite(row.item.intensityLater)).length,
         weightedSamples: weightTotal,
         averageDistance: rows.reduce((sum, row) => sum + row.distance, 0) / rows.length,
         averageDelta: rows.reduce(
-          (sum, row) => sum + (row.item.intensityBefore - row.item.intensityAfter) * row.weight,
+          (sum, row) => sum + getEffectiveOutcomeDelta(row.item) * row.weight,
           0,
         ) / weightTotal,
         averageHelpfulness: rows.reduce(
@@ -172,6 +260,7 @@ function weightedFingerprintScore(items, targetFingerprint) {
     .sort((a, b) =>
       b.averageDelta - a.averageDelta ||
       b.averageHelpfulness - a.averageHelpfulness ||
+      b.durableSamples - a.durableSamples ||
       a.averageDistance - b.averageDistance ||
       b.samples - a.samples
     )
@@ -197,7 +286,7 @@ export function getInterventionPlan(
   for (const row of contextRows) contextCounts[row.interventionStyle] += 1
 
   // Exploration stays globally bounded to exactly two measured attempts per
-  // recipe. State Fingerprint never creates extra mandatory trials.
+  // recipe. Outcome persistence changes scoring, never the exploration budget.
   const exploreStyle = INTERVENTION_STYLES
     .map((style, order) => ({
       style,
@@ -222,6 +311,7 @@ export function getInterventionPlan(
       contextBand,
       contextSamples: contextRows.length,
       fingerprintSamples: 0,
+      durableSamples: rows.filter((row) => Number.isFinite(row.intensityLater)).length,
       counts,
       contextCounts,
     }
@@ -261,6 +351,7 @@ export function getInterventionPlan(
     samples: evidenceRows.length,
     totalSamples: rows.length,
     styleSamples: best?.samples || 0,
+    durableSamples: evidenceRows.filter((row) => Number.isFinite(row.intensityLater)).length,
     averageDelta: best?.averageDelta || 0,
     averageHelpfulness: best?.averageHelpfulness || 0,
     confidence: evidenceRows.length >= 12 ? 'high' : evidenceRows.length >= 8 ? 'medium' : 'early',
@@ -282,12 +373,13 @@ export function getRecommendation(focus = 'general') {
   const pace = groupScore(rows, 'pace')[0] || null
   const mode = groupScore(rows, 'mode')[0] || null
   const averageDelta = rows.reduce(
-    (sum, row) => sum + (row.intensityBefore - row.intensityAfter),
+    (sum, row) => sum + getEffectiveOutcomeDelta(row),
     0,
   ) / rows.length
 
   return {
     samples: rows.length,
+    durableSamples: rows.filter((row) => Number.isFinite(row.intensityLater)).length,
     pace: pace?.value || null,
     paceSamples: pace?.samples || 0,
     mode: mode?.value || null,
