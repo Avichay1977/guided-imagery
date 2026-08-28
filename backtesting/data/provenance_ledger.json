@@ -1,0 +1,234 @@
+{
+  "AMD": {
+    "sources": [
+      {
+        "name": "dtwParallel",
+        "url": "https://raw.githubusercontent.com/oscarescuderoarnanz/dtwParallel/main/exampleData/Data/E2_FinanceData/all_data/AMD.CSV",
+        "rows": 1006,
+        "range": [
+          "2015-01-02",
+          "2018-12-31"
+        ],
+        "split_harmonization_price_divisor": 1.0,
+        "split_harmonization_volume_multiplier": 1.0
+      },
+      {
+        "name": "brownbear",
+        "url": "https://raw.githubusercontent.com/fja05680/brownbear/master/symbol-cache/AMD.csv",
+        "rows": 1510,
+        "range": [
+          "2019-01-02",
+          "2024-12-31"
+        ]
+      }
+    ],
+    "merge_strategy": "dtwParallel 2015-2018 + brownbear 2019-2024; brownbear is authoritative for overlap",
+    "auto_adjust_note": "Prices are split-adjusted consistent with existing repo convention",
+    "output_file": "data/AMD_2015-01-01_2024-12-31.csv",
+    "total_rows": 2516,
+    "fetch_timestamp_utc": "2026-05-31T20:59:11.643990Z"
+  },
+  "TSLA": {
+    "sources": [
+      {
+        "name": "dtwParallel",
+        "url": "https://raw.githubusercontent.com/oscarescuderoarnanz/dtwParallel/main/exampleData/Data/E2_FinanceData/all_data/TSLA.CSV",
+        "rows": 1006,
+        "range": [
+          "2015-01-02",
+          "2018-12-31"
+        ],
+        "split_harmonization_price_divisor": 3.0,
+        "split_harmonization_volume_multiplier": 3.0
+      },
+      {
+        "name": "brownbear",
+        "url": "https://raw.githubusercontent.com/fja05680/brownbear/master/symbol-cache/TSLA.csv",
+        "rows": 1510,
+        "range": [
+          "2019-01-02",
+          "2024-12-31"
+        ]
+      }
+    ],
+    "merge_strategy": "dtwParallel 2015-2018 + brownbear 2019-2024; brownbear is authoritative for overlap",
+    "auto_adjust_note": "Prices are split-adjusted consistent with existing repo convention",
+    "output_file": "data/TSLA_2015-01-01_2024-12-31.csv",
+    "total_rows": 2516,
+    "fetch_timestamp_utc": "2026-05-31T20:59:11.979540Z"
+  },
+  "NFLX": {
+    "sources": [
+      {
+        "name": "dtwParallel",
+        "url": "https://raw.githubusercontent.com/oscarescuderoarnanz/dtwParallel/main/exampleData/Data/E2_FinanceData/all_data/NFLX.CSV",
+        "rows": 1006,
+        "range": [
+          "2015-01-02",
+          "2018-12-31"
+        ],
+        "split_harmonization_price_divisor": 1.0,
+        "split_harmonization_volume_multiplier": 1.0
+      },
+      {
+        "name": "brownbear",
+        "url": "https://raw.githubusercontent.com/fja05680/brownbear/master/symbol-cache/NFLX.csv",
+        "rows": 1510,
+        "range": [
+          "2019-01-02",
+          "2024-12-31"
+        ]
+      }
+    ],
+    "merge_strategy": "dtwParallel 2015-2018 + brownbear 2019-2024; brownbear is authoritative for overlap",
+    "auto_adjust_note": "Prices are split-adjusted consistent with existing repo convention",
+    "output_file": "data/NFLX_2015-01-01_2024-12-31.csv",
+    "total_rows": 2516,
+    "fetch_timestamp_utc": "2026-05-31T20:59:12.202150Z"
+  },
+  "AVGO": {
+    "sources": [
+      {
+        "name": "dtwParallel",
+        "url": "https://raw.githubusercontent.com/oscarescuderoarnanz/dtwParallel/main/exampleData/Data/E2_FinanceData/all_data/AVGO.CSV",
+        "rows": 1006,
+        "range": [
+          "2015-01-02",
+          "2018-12-31"
+        ],
+        "split_harmonization_price_divisor": 10.0,
+        "split_harmonization_volume_multiplier": 10.0
+      },
+      {
+        "name": "brownbear",
+        "url": "https://raw.githubusercontent.com/fja05680/brownbear/master/symbol-cache/AVGO.csv",
+        "rows": 1510,
+        "range": [
+          "2019-01-02",
+          "2024-12-31"
+        ]
+      }
+    ],
+    "merge_strategy": "dtwParallel 2015-2018 + brownbear 2019-2024; brownbear is authoritative for overlap",
+    "auto_adjust_note": "Prices are split-adjusted consistent with existing repo convention",
+    "output_file": "data/AVGO_2015-01-01_2024-12-31.csv",
+    "total_rows": 2516,
+    "fetch_timestamp_utc": "2026-05-31T20:59:12.418816Z"
+  },
+  "CRM": {
+    "sources": [
+      {
+        "name": "dtwParallel",
+        "url": "https://raw.githubusercontent.com/oscarescuderoarnanz/dtwParallel/main/exampleData/Data/E2_FinanceData/all_data/CRM.CSV",
+        "rows": 1006,
+        "range": [
+          "2015-01-02",
+          "2018-12-31"
+        ],
+        "split_harmonization_price_divisor": 1.0,
+        "split_harmonization_volume_multiplier": 1.0
+      },
+      {
+        "name": "brownbear",
+        "url": "https://raw.githubusercontent.com/fja05680/brownbear/master/symbol-cache/CRM.csv",
+        "rows": 1510,
+        "range": [
+          "2019-01-02",
+          "2024-12-31"
+        ]
+      }
+    ],
+    "merge_strategy": "dtwParallel 2015-2018 + brownbear 2019-2024; brownbear is authoritative for overlap",
+    "auto_adjust_note": "Prices are split-adjusted consistent with existing repo convention",
+    "output_file": "data/CRM_2015-01-01_2024-12-31.csv",
+    "total_rows": 2516,
+    "fetch_timestamp_utc": "2026-05-31T20:59:12.637336Z"
+  },
+  "INTC": {
+    "sources": [
+      {
+        "name": "dtwParallel",
+        "url": "https://raw.githubusercontent.com/oscarescuderoarnanz/dtwParallel/main/exampleData/Data/E2_FinanceData/all_data/INTC.CSV",
+        "rows": 1006,
+        "range": [
+          "2015-01-02",
+          "2018-12-31"
+        ],
+        "split_harmonization_price_divisor": 1.0,
+        "split_harmonization_volume_multiplier": 1.0
+      },
+      {
+        "name": "brownbear",
+        "url": "https://raw.githubusercontent.com/fja05680/brownbear/master/symbol-cache/INTC.csv",
+        "rows": 1510,
+        "range": [
+          "2019-01-02",
+          "2024-12-31"
+        ]
+      }
+    ],
+    "merge_strategy": "dtwParallel 2015-2018 + brownbear 2019-2024; brownbear is authoritative for overlap",
+    "auto_adjust_note": "Prices are split-adjusted consistent with existing repo convention",
+    "output_file": "data/INTC_2015-01-01_2024-12-31.csv",
+    "total_rows": 2516,
+    "fetch_timestamp_utc": "2026-05-31T20:59:12.808208Z"
+  },
+  "CSCO": {
+    "sources": [
+      {
+        "name": "dtwParallel",
+        "url": "https://raw.githubusercontent.com/oscarescuderoarnanz/dtwParallel/main/exampleData/Data/E2_FinanceData/all_data/CSCO.CSV",
+        "rows": 1006,
+        "range": [
+          "2015-01-02",
+          "2018-12-31"
+        ],
+        "split_harmonization_price_divisor": 1.0,
+        "split_harmonization_volume_multiplier": 1.0
+      },
+      {
+        "name": "brownbear",
+        "url": "https://raw.githubusercontent.com/fja05680/brownbear/master/symbol-cache/CSCO.csv",
+        "rows": 1510,
+        "range": [
+          "2019-01-02",
+          "2024-12-31"
+        ]
+      }
+    ],
+    "merge_strategy": "dtwParallel 2015-2018 + brownbear 2019-2024; brownbear is authoritative for overlap",
+    "auto_adjust_note": "Prices are split-adjusted consistent with existing repo convention",
+    "output_file": "data/CSCO_2015-01-01_2024-12-31.csv",
+    "total_rows": 2516,
+    "fetch_timestamp_utc": "2026-05-31T20:59:12.976012Z"
+  },
+  "IBM": {
+    "sources": [
+      {
+        "name": "dtwParallel",
+        "url": "https://raw.githubusercontent.com/oscarescuderoarnanz/dtwParallel/main/exampleData/Data/E2_FinanceData/all_data/IBM.CSV",
+        "rows": 1006,
+        "range": [
+          "2015-01-02",
+          "2018-12-31"
+        ],
+        "split_harmonization_price_divisor": 1.0,
+        "split_harmonization_volume_multiplier": 1.0
+      },
+      {
+        "name": "brownbear",
+        "url": "https://raw.githubusercontent.com/fja05680/brownbear/master/symbol-cache/IBM.csv",
+        "rows": 1510,
+        "range": [
+          "2019-01-02",
+          "2024-12-31"
+        ]
+      }
+    ],
+    "merge_strategy": "dtwParallel 2015-2018 + brownbear 2019-2024; brownbear is authoritative for overlap",
+    "auto_adjust_note": "Prices are split-adjusted consistent with existing repo convention",
+    "output_file": "data/IBM_2015-01-01_2024-12-31.csv",
+    "total_rows": 2516,
+    "fetch_timestamp_utc": "2026-05-31T20:59:13.144481Z"
+  }
+}
