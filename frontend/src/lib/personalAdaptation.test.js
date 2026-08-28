@@ -2,10 +2,14 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   clearPersonalAdaptation,
+  dismissFollowUp,
+  getDueFollowUp,
+  getEffectiveOutcomeDelta,
   getIntensityBand,
   getInterventionPlan,
   normalizeStateFingerprint,
   recordCompletedSession,
+  saveDelayedOutcome,
   saveOutcome,
   stateFingerprintDistance,
 } from './personalAdaptation.js'
@@ -52,6 +56,22 @@ function complete(
     stateFingerprint,
   })
   assert.equal(saveOutcome(id, { intensityAfter: after, helpfulness }), true)
+}
+
+function completeDurable(id, style, after, later, helpfulness, now) {
+  recordCompletedSession(id, {
+    focus: 'anxiety',
+    mode: 'imagery',
+    pace: 'slow',
+    duration: 10,
+    neuroprofile: 'none',
+    ageGroup: 'adult',
+    interventionStyle: style,
+    interventionSource: 'learned',
+    intensityBefore: 8,
+  })
+  assert.equal(saveOutcome(id, { intensityAfter: after, helpfulness }, now), true)
+  assert.equal(saveDelayedOutcome(id, { intensityLater: later }, now + 31 * 60 * 1000), true)
 }
 
 test('intensity is reduced to three stable context bands', () => {
@@ -202,6 +222,69 @@ test('one contextual recipe is not enough evidence to override the global plan',
   assert.equal(medium.eligibleContextStyles, 1)
 })
 
+test('immediate feedback schedules a 30-minute follow-up with a finite validity window', () => {
+  clearPersonalAdaptation()
+  const now = 1_000_000
+  recordCompletedSession('follow1', {
+    focus: 'anxiety',
+    interventionStyle: 'balanced',
+    intensityBefore: 8,
+  })
+  assert.equal(saveOutcome('follow1', { intensityAfter: 4, helpfulness: 4 }, now), true)
+
+  assert.equal(getDueFollowUp(now + 29 * 60 * 1000), null)
+  const due = getDueFollowUp(now + 30 * 60 * 1000)
+  assert.equal(due.sessionId, 'follow1')
+  assert.equal(due.intensityAfter, 4)
+  assert.equal(getDueFollowUp(now + 30 * 60 * 1000 + 6 * 60 * 60 * 1000 + 1), null)
+})
+
+test('delayed outcome completes follow-up and can be skipped without blocking learning', () => {
+  clearPersonalAdaptation()
+  const now = 2_000_000
+  recordCompletedSession('later1', {
+    focus: 'anxiety',
+    interventionStyle: 'balanced',
+    intensityBefore: 8,
+  })
+  saveOutcome('later1', { intensityAfter: 4, helpfulness: 4 }, now)
+  assert.equal(saveDelayedOutcome('later1', { intensityLater: 5 }, now + 31 * 60 * 1000), true)
+  assert.equal(getDueFollowUp(now + 32 * 60 * 1000), null)
+
+  recordCompletedSession('skip1', {
+    focus: 'anxiety',
+    interventionStyle: 'grounded',
+    intensityBefore: 8,
+  })
+  saveOutcome('skip1', { intensityAfter: 3, helpfulness: 5 }, now)
+  assert.equal(dismissFollowUp('skip1', now + 31 * 60 * 1000), true)
+  assert.equal(getDueFollowUp(now + 32 * 60 * 1000), null)
+})
+
+test('durable outcome gets 75 percent of delta weight when available', () => {
+  const withoutLater = { intensityBefore: 8, intensityAfter: 2, intensityLater: null }
+  const withLater = { intensityBefore: 8, intensityAfter: 2, intensityLater: 7 }
+  assert.equal(getEffectiveOutcomeDelta(withoutLater), 6)
+  assert.equal(getEffectiveOutcomeDelta(withLater), 2.25)
+})
+
+test('a durable result can overturn a strong but short-lived immediate result', () => {
+  clearPersonalAdaptation()
+  const now = 3_000_000
+
+  completeDurable('b1', 'balanced', 2, 7, 5, now)
+  completeDurable('b2', 'balanced', 2, 7, 5, now + 1)
+  completeDurable('g1', 'grounded', 4, 2, 4, now + 2)
+  completeDurable('g2', 'grounded', 4, 2, 4, now + 3)
+  completeDurable('r1', 'rehearsal', 6, 6, 3, now + 4)
+  completeDurable('r2', 'rehearsal', 6, 6, 3, now + 5)
+
+  const plan = getInterventionPlan('anxiety', 8)
+  assert.equal(plan.phase, 'learned')
+  assert.equal(plan.style, 'grounded')
+  assert.equal(plan.durableSamples, 6)
+})
+
 test('free-text topic is never persisted while numeric fingerprint is allowed', () => {
   clearPersonalAdaptation()
   recordCompletedSession('privacy1', {
@@ -244,6 +327,7 @@ test('re-recording a session preserves feedback already saved', () => {
   const raw = JSON.parse(localStorage.getItem('guided_imagery_personal_adaptation_v1'))
   assert.equal(raw[0].intensityAfter, 3)
   assert.equal(raw[0].helpfulness, 5)
+  assert.ok(Number.isFinite(raw[0].followUpDueAt))
   assert.equal(raw[0].stateFingerprint.bodyActivation, 2)
 })
 
