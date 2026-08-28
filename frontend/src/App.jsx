@@ -6,11 +6,12 @@ import ProgressLoader from './components/ProgressLoader'
 import AudioPlayer from './components/AudioPlayer'
 import AmbienceRemix from './components/AmbienceRemix'
 import SessionFeedback from './components/SessionFeedback'
+import DelayedOutcomeCheckIn from './components/DelayedOutcomeCheckIn'
 import ScriptDisplay from './components/ScriptDisplay'
 import LanguageToggle from './components/LanguageToggle'
 import YouTubeTranslator from './components/YouTubeTranslator'
 import MathCanvas from './components/MathCanvas/MathCanvas'
-import { recordCompletedSession } from './lib/personalAdaptation'
+import { getDueFollowUp, recordCompletedSession } from './lib/personalAdaptation'
 import { applyInterventionStyle } from './lib/interventionRecipes'
 
 function App() {
@@ -19,6 +20,7 @@ function App() {
   const [page, setPage] = useState('home') // home | youtube | math
   const [mix, setMix] = useState({ bells: 0, music: 35 })
   const [lastRequest, setLastRequest] = useState(null)
+  const [dueFollowUp, setDueFollowUp] = useState(() => getDueFollowUp())
 
   useEffect(() => {
     document.documentElement.dir = i18n.dir()
@@ -29,6 +31,20 @@ function App() {
     if (!result?.session_id || !lastRequest) return
     recordCompletedSession(result.session_id, lastRequest)
   }, [result?.session_id, lastRequest])
+
+  useEffect(() => {
+    const refreshFollowUp = () => setDueFollowUp(getDueFollowUp())
+    const interval = window.setInterval(refreshFollowUp, 60 * 1000)
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') refreshFollowUp()
+    }
+
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => {
+      window.clearInterval(interval)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
+  }, [])
 
   const handleGenerate = ({
     topic, duration, mode, depth, ageGroup, focus, neuroprofile, pace,
@@ -69,6 +85,10 @@ function App() {
     reset()
   }
 
+  const handleFollowUpDone = () => {
+    setDueFollowUp(getDueFollowUp())
+  }
+
   return (
     <div className="app">
       <div className="app-bg" />
@@ -88,6 +108,13 @@ function App() {
       )}
 
       <main className={`app-main ${page === 'youtube' ? 'app-main-wide' : ''} ${page === 'math' ? 'app-main-hidden' : ''}`}>
+        {page === 'home' && dueFollowUp && (state === 'idle' || state === 'complete') && (
+          <DelayedOutcomeCheckIn
+            followUp={dueFollowUp}
+            onDone={handleFollowUpDone}
+          />
+        )}
+
         {page === 'youtube' ? (
           <YouTubeTranslator onBack={() => setPage('home')} />
         ) : page !== 'math' ? (
