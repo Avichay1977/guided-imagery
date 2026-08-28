@@ -94,8 +94,16 @@
     "helpfulness": "How helpful was the session? 1–5",
     "save": "Save and learn",
     "saved_title": "Saved.",
-    "saved_body": "Future sessions can use this result as weak evidence, never as a rule.",
-    "privacy": "Learning history stays in this browser on this device. Your free-text topic is not stored; the three state ratings are stored only as 0–2 numbers."
+    "saved_body": "Immediate feedback is saved. In about 30 minutes, if the app is open or reopened, a short optional follow-up can appear.",
+    "privacy": "Learning history stays in this browser on this device. Your free-text topic is not stored; the three state ratings are stored only as 0–2 numbers.",
+    "later_title": "Quick check: did the effect last?",
+    "later_subtitle": "At least about 30 minutes have passed. This measurement gets more weight than immediate relief so the app learns what actually lasts.",
+    "later_intensity": "How strong is it now?",
+    "later_save": "Save later result",
+    "later_skip": "Skip",
+    "later_saved_title": "Follow-up saved.",
+    "later_saved_body": "Learning will give more weight to effects that persist over time.",
+    "later_privacy": "This check-in is optional and stays on this device. If more than 6 hours pass, the app will not ask for it retroactively."
   },
   "player": {
     "play": "Play",
