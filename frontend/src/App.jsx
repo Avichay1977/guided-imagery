@@ -11,6 +11,7 @@ import LanguageToggle from './components/LanguageToggle'
 import YouTubeTranslator from './components/YouTubeTranslator'
 import MathCanvas from './components/MathCanvas/MathCanvas'
 import { recordCompletedSession } from './lib/personalAdaptation'
+import { applyInterventionStyle } from './lib/interventionRecipes'
 
 function App() {
   const { t, i18n } = useTranslation()
@@ -31,7 +32,7 @@ function App() {
 
   const handleGenerate = ({
     topic, duration, mode, depth, ageGroup, focus, neuroprofile, pace,
-    bellsVolume, musicVolume, intensityBefore,
+    interventionStyle, interventionSource, bellsVolume, musicVolume, intensityBefore,
   }) => {
     const requestSettings = {
       duration,
@@ -40,12 +41,14 @@ function App() {
       focus,
       neuroprofile,
       pace,
+      interventionStyle,
+      interventionSource,
       intensityBefore,
     }
     setLastRequest(requestSettings)
     setMix({ bells: bellsVolume, music: musicVolume })
     generate({
-      topic,
+      topic: applyInterventionStyle(topic, interventionStyle),
       durationMinutes: duration,
       language: i18n.language,
       mode,
