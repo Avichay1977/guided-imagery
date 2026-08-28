@@ -4,8 +4,10 @@ import {
   clearPersonalAdaptation,
   getIntensityBand,
   getInterventionPlan,
+  normalizeStateFingerprint,
   recordCompletedSession,
   saveOutcome,
+  stateFingerprintDistance,
 } from './personalAdaptation.js'
 import { applyInterventionStyle } from './interventionRecipes.js'
 
@@ -29,7 +31,14 @@ class MemoryStorage {
 
 globalThis.localStorage = new MemoryStorage()
 
-function complete(id, style, after, helpfulness, intensityBefore = 8) {
+function complete(
+  id,
+  style,
+  after,
+  helpfulness,
+  intensityBefore = 8,
+  stateFingerprint = null,
+) {
   recordCompletedSession(id, {
     focus: 'anxiety',
     mode: 'imagery',
@@ -40,6 +49,7 @@ function complete(id, style, after, helpfulness, intensityBefore = 8) {
     interventionStyle: style,
     interventionSource: 'explore',
     intensityBefore,
+    stateFingerprint,
   })
   assert.equal(saveOutcome(id, { intensityAfter: after, helpfulness }), true)
 }
@@ -54,27 +64,39 @@ test('intensity is reduced to three stable context bands', () => {
   assert.equal(getIntensityBand(undefined), null)
 })
 
+test('state fingerprint accepts only complete 0/1/2 ratings and has stable distance', () => {
+  const a = { bodyActivation: 0, thoughtLoop: 2, movementNeed: 0 }
+  const b = { bodyActivation: 2, thoughtLoop: 0, movementNeed: 2 }
+  assert.deepEqual(normalizeStateFingerprint(a), a)
+  assert.equal(normalizeStateFingerprint({ bodyActivation: 0, thoughtLoop: 2 }), null)
+  assert.equal(normalizeStateFingerprint({ ...a, movementNeed: 3 }), null)
+  assert.equal(stateFingerprintDistance(a, a), 0)
+  assert.equal(stateFingerprintDistance(a, b), 6)
+  assert.equal(stateFingerprintDistance(a, null), null)
+})
+
 test('auto still explores each safe recipe only twice, then learns', () => {
   clearPersonalAdaptation()
-  assert.equal(getInterventionPlan('anxiety', 8).style, 'balanced')
+  const fingerprint = { bodyActivation: 1, thoughtLoop: 1, movementNeed: 1 }
+  assert.equal(getInterventionPlan('anxiety', 8, fingerprint).style, 'balanced')
 
-  complete('b1', 'balanced', 3, 5)
-  assert.equal(getInterventionPlan('anxiety', 8).style, 'grounded')
+  complete('b1', 'balanced', 3, 5, 8, fingerprint)
+  assert.equal(getInterventionPlan('anxiety', 8, fingerprint).style, 'grounded')
 
-  complete('g1', 'grounded', 5, 4)
-  assert.equal(getInterventionPlan('anxiety', 8).style, 'rehearsal')
+  complete('g1', 'grounded', 5, 4, 8, fingerprint)
+  assert.equal(getInterventionPlan('anxiety', 8, fingerprint).style, 'rehearsal')
 
-  complete('r1', 'rehearsal', 6, 3)
-  assert.equal(getInterventionPlan('anxiety', 8).style, 'balanced')
+  complete('r1', 'rehearsal', 6, 3, 8, fingerprint)
+  assert.equal(getInterventionPlan('anxiety', 8, fingerprint).style, 'balanced')
 
-  complete('b2', 'balanced', 2, 5)
-  assert.equal(getInterventionPlan('anxiety', 8).style, 'grounded')
+  complete('b2', 'balanced', 2, 5, 8, fingerprint)
+  assert.equal(getInterventionPlan('anxiety', 8, fingerprint).style, 'grounded')
 
-  complete('g2', 'grounded', 5, 4)
-  assert.equal(getInterventionPlan('anxiety', 8).style, 'rehearsal')
+  complete('g2', 'grounded', 5, 4, 8, fingerprint)
+  assert.equal(getInterventionPlan('anxiety', 8, fingerprint).style, 'rehearsal')
 
-  complete('r2', 'rehearsal', 6, 3)
-  const learned = getInterventionPlan('anxiety', 8)
+  complete('r2', 'rehearsal', 6, 3, 8, fingerprint)
+  const learned = getInterventionPlan('anxiety', 8, fingerprint)
   assert.equal(learned.phase, 'learned')
   assert.equal(learned.style, 'balanced')
   assert.equal(learned.totalSamples, 6)
@@ -114,6 +136,57 @@ test('the same focus can learn different recipes at low and high intensity', () 
   assert.equal(medium.contextBand, 'medium')
 })
 
+test('same focus and intensity can learn different recipes from state fingerprint', () => {
+  clearPersonalAdaptation()
+  const looping = { bodyActivation: 0, thoughtLoop: 2, movementNeed: 0 }
+  const activated = { bodyActivation: 2, thoughtLoop: 0, movementNeed: 2 }
+  const middle = { bodyActivation: 1, thoughtLoop: 1, movementNeed: 1 }
+
+  complete('loop-b1', 'balanced', 2, 5, 8, looping)
+  complete('loop-b2', 'balanced', 2, 5, 8, looping)
+  complete('loop-g1', 'grounded', 6, 2, 8, looping)
+  complete('loop-g2', 'grounded', 6, 2, 8, looping)
+
+  complete('act-b1', 'balanced', 6, 2, 8, activated)
+  complete('act-b2', 'balanced', 6, 2, 8, activated)
+  complete('act-g1', 'grounded', 2, 5, 8, activated)
+  complete('act-g2', 'grounded', 2, 5, 8, activated)
+
+  complete('mid-r1', 'rehearsal', 5, 3, 8, middle)
+  complete('mid-r2', 'rehearsal', 5, 3, 8, middle)
+
+  const loopingPlan = getInterventionPlan('anxiety', 8, looping)
+  const activatedPlan = getInterventionPlan('anxiety', 8, activated)
+
+  assert.equal(loopingPlan.scope, 'fingerprint')
+  assert.equal(loopingPlan.style, 'balanced')
+  assert.equal(loopingPlan.fingerprintSamples, 4)
+  assert.equal(loopingPlan.eligibleFingerprintStyles, 2)
+
+  assert.equal(activatedPlan.scope, 'fingerprint')
+  assert.equal(activatedPlan.style, 'grounded')
+  assert.equal(activatedPlan.fingerprintSamples, 4)
+  assert.equal(activatedPlan.eligibleFingerprintStyles, 2)
+})
+
+test('sparse fingerprint evidence falls back to intensity context', () => {
+  clearPersonalAdaptation()
+  const target = { bodyActivation: 2, thoughtLoop: 2, movementNeed: 0 }
+  const far = { bodyActivation: 0, thoughtLoop: 0, movementNeed: 2 }
+
+  complete('b1', 'balanced', 5, 3, 8, target)
+  complete('b2', 'balanced', 5, 3, 8, target)
+  complete('g1', 'grounded', 2, 5, 8, far)
+  complete('g2', 'grounded', 2, 5, 8, far)
+  complete('r1', 'rehearsal', 6, 2, 8, far)
+  complete('r2', 'rehearsal', 6, 2, 8, far)
+
+  const plan = getInterventionPlan('anxiety', 8, target)
+  assert.equal(plan.scope, 'context')
+  assert.equal(plan.eligibleFingerprintStyles, 1)
+  assert.equal(plan.style, 'grounded')
+})
+
 test('one contextual recipe is not enough evidence to override the global plan', () => {
   clearPersonalAdaptation()
 
@@ -129,7 +202,7 @@ test('one contextual recipe is not enough evidence to override the global plan',
   assert.equal(medium.eligibleContextStyles, 1)
 })
 
-test('free-text topic is never persisted in adaptation history', () => {
+test('free-text topic is never persisted while numeric fingerprint is allowed', () => {
   clearPersonalAdaptation()
   recordCompletedSession('privacy1', {
     focus: 'general',
@@ -137,12 +210,19 @@ test('free-text topic is never persisted in adaptation history', () => {
     pace: 'slow',
     interventionStyle: 'balanced',
     intensityBefore: 5,
+    stateFingerprint: { bodyActivation: 2, thoughtLoop: 1, movementNeed: 0 },
     topic: 'THIS PHRASE MUST NEVER BE STORED',
   })
 
   const raw = localStorage.getItem('guided_imagery_personal_adaptation_v1')
   assert.ok(raw)
   assert.equal(raw.includes('THIS PHRASE MUST NEVER BE STORED'), false)
+  const parsed = JSON.parse(raw)
+  assert.deepEqual(parsed[0].stateFingerprint, {
+    bodyActivation: 2,
+    thoughtLoop: 1,
+    movementNeed: 0,
+  })
 })
 
 test('re-recording a session preserves feedback already saved', () => {
@@ -151,17 +231,20 @@ test('re-recording a session preserves feedback already saved', () => {
     focus: 'general',
     interventionStyle: 'balanced',
     intensityBefore: 7,
+    stateFingerprint: { bodyActivation: 1, thoughtLoop: 1, movementNeed: 1 },
   })
   saveOutcome('same1', { intensityAfter: 3, helpfulness: 5 })
   recordCompletedSession('same1', {
     focus: 'general',
     interventionStyle: 'balanced',
     intensityBefore: 7,
+    stateFingerprint: { bodyActivation: 2, thoughtLoop: 1, movementNeed: 1 },
   })
 
   const raw = JSON.parse(localStorage.getItem('guided_imagery_personal_adaptation_v1'))
   assert.equal(raw[0].intensityAfter, 3)
   assert.equal(raw[0].helpfulness, 5)
+  assert.equal(raw[0].stateFingerprint.bodyActivation, 2)
 })
 
 test('recipe directives stay subordinate to earlier safety rules', () => {

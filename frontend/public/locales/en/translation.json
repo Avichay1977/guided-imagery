@@ -20,6 +20,14 @@
     "topic_placeholder": "Write freely... e.g., Release anxiety, Better sleep, Self confidence, Pain management",
     "intensity_before": "How strong is it right now?",
     "intensity_hint": "0 = barely noticeable, 10 = maximum intensity. This number is used only for personal learning on this device.",
+    "fingerprint_label": "What is happening in your body and attention?",
+    "fingerprint_hint": "Three quick ratings only. Pick low, medium or high — there is no correct answer.",
+    "fingerprint_bodyActivation": "Body activation",
+    "fingerprint_thoughtLoop": "Repeating thoughts / loop",
+    "fingerprint_movementNeed": "Need to move",
+    "fingerprint_level_0": "Low",
+    "fingerprint_level_1": "Medium",
+    "fingerprint_level_2": "High",
     "duration_label": "Duration",
     "minutes": "min",
     "bells_label": "Background Bells",
@@ -57,6 +65,8 @@
     "approach_rehearsal": "Rehearsal",
     "approach_auto_explore": "Auto is currently testing {{style}} — {{count}} of 2 measured. Every recipe stays inside the focus safety rules.",
     "approach_auto_learned": "Auto currently prefers {{style}} from {{count}} measured sessions. You can override it manually.",
+    "approach_auto_context": "Auto currently prefers {{style}} from {{count}} sessions at a similar intensity. You can override it manually.",
+    "approach_auto_fingerprint": "Auto currently prefers {{style}} from {{count}} states similar in intensity and state fingerprint. You can override it manually.",
     "approach_manual_hint": "A manual choice overrides learning for this session.",
     "neuro_label": "Adapt the script for",
     "neuro_none": "No adaptation",
@@ -85,7 +95,7 @@
     "save": "Save and learn",
     "saved_title": "Saved.",
     "saved_body": "Future sessions can use this result as weak evidence, never as a rule.",
-    "privacy": "Learning history stays in this browser on this device. Your free-text topic is not stored in the learning history."
+    "privacy": "Learning history stays in this browser on this device. Your free-text topic is not stored; the three state ratings are stored only as 0–2 numbers."
   },
   "player": {
     "play": "Play",

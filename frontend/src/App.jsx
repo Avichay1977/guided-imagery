@@ -33,6 +33,7 @@ function App() {
   const handleGenerate = ({
     topic, duration, mode, depth, ageGroup, focus, neuroprofile, pace,
     interventionStyle, interventionSource, bellsVolume, musicVolume, intensityBefore,
+    stateFingerprint,
   }) => {
     const requestSettings = {
       duration,
@@ -44,6 +45,7 @@ function App() {
       interventionStyle,
       interventionSource,
       intensityBefore,
+      stateFingerprint,
     }
     setLastRequest(requestSettings)
     setMix({ bells: bellsVolume, music: musicVolume })

@@ -281,3 +281,20 @@
   color: var(--color-accent);
   opacity: 0.85;
 }
+
+/* State Fingerprint: three fast coarse ratings, always kept on one row. */
+.session-form .feedback-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding-top: 0.35rem;
+}
+
+.session-form .feedback-field > span {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.session-form .feedback-field .pace-options {
+  grid-template-columns: repeat(3, 1fr);
+}

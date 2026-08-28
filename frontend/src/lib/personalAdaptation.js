@@ -6,6 +6,9 @@ const MIN_SAMPLES = 3
 const MIN_OPTION_SAMPLES = 2
 const MIN_STYLE_OPTION_SAMPLES = 2
 const MIN_CONTEXT_STYLES = 2
+const MIN_FINGERPRINT_STYLES = 2
+const MAX_FINGERPRINT_DISTANCE = 2
+const FINGERPRINT_KEYS = ['bodyActivation', 'thoughtLoop', 'movementNeed']
 
 function readHistory() {
   try {
@@ -32,6 +35,24 @@ export function getIntensityBand(value) {
   return 'high'
 }
 
+export function normalizeStateFingerprint(fingerprint) {
+  if (!fingerprint || typeof fingerprint !== 'object') return null
+  const normalized = {}
+  for (const key of FINGERPRINT_KEYS) {
+    const value = Number(fingerprint[key])
+    if (!Number.isInteger(value) || value < 0 || value > 2) return null
+    normalized[key] = value
+  }
+  return normalized
+}
+
+export function stateFingerprintDistance(left, right) {
+  const a = normalizeStateFingerprint(left)
+  const b = normalizeStateFingerprint(right)
+  if (!a || !b) return null
+  return FINGERPRINT_KEYS.reduce((sum, key) => sum + Math.abs(a[key] - b[key]), 0)
+}
+
 export function recordCompletedSession(sessionId, settings) {
   if (!sessionId || !settings) return
   const history = readHistory()
@@ -51,6 +72,7 @@ export function recordCompletedSession(sessionId, settings) {
     intensityBefore: Number.isFinite(settings.intensityBefore)
       ? settings.intensityBefore
       : null,
+    stateFingerprint: normalizeStateFingerprint(settings.stateFingerprint),
   }
 
   // Re-recording the same rendered session must not erase feedback that may
@@ -118,7 +140,48 @@ function groupScore(items, key, minSamples = MIN_OPTION_SAMPLES) {
     )
 }
 
-export function getInterventionPlan(focus = 'general', intensityBefore = null) {
+function weightedFingerprintScore(items, targetFingerprint) {
+  const groups = new Map()
+  for (const item of items) {
+    const distance = stateFingerprintDistance(item.stateFingerprint, targetFingerprint)
+    if (distance === null || distance > MAX_FINGERPRINT_DISTANCE) continue
+    const style = item.interventionStyle
+    if (!groups.has(style)) groups.set(style, [])
+    groups.get(style).push({ item, distance, weight: 1 / (1 + distance) })
+  }
+
+  return [...groups.entries()]
+    .map(([value, rows]) => {
+      const weightTotal = rows.reduce((sum, row) => sum + row.weight, 0)
+      return {
+        value,
+        samples: rows.length,
+        weightedSamples: weightTotal,
+        averageDistance: rows.reduce((sum, row) => sum + row.distance, 0) / rows.length,
+        averageDelta: rows.reduce(
+          (sum, row) => sum + (row.item.intensityBefore - row.item.intensityAfter) * row.weight,
+          0,
+        ) / weightTotal,
+        averageHelpfulness: rows.reduce(
+          (sum, row) => sum + row.item.helpfulness * row.weight,
+          0,
+        ) / weightTotal,
+      }
+    })
+    .filter((group) => group.samples >= MIN_STYLE_OPTION_SAMPLES)
+    .sort((a, b) =>
+      b.averageDelta - a.averageDelta ||
+      b.averageHelpfulness - a.averageHelpfulness ||
+      a.averageDistance - b.averageDistance ||
+      b.samples - a.samples
+    )
+}
+
+export function getInterventionPlan(
+  focus = 'general',
+  intensityBefore = null,
+  stateFingerprint = null,
+) {
   const rows = completedForFocus(focus).filter((item) =>
     INTERVENTION_STYLES.includes(item.interventionStyle)
   )
@@ -126,15 +189,15 @@ export function getInterventionPlan(focus = 'general', intensityBefore = null) {
   const contextRows = contextBand
     ? rows.filter((item) => getIntensityBand(item.intensityBefore) === contextBand)
     : []
+  const normalizedFingerprint = normalizeStateFingerprint(stateFingerprint)
 
   const counts = Object.fromEntries(INTERVENTION_STYLES.map((style) => [style, 0]))
   const contextCounts = Object.fromEntries(INTERVENTION_STYLES.map((style) => [style, 0]))
   for (const row of rows) counts[row.interventionStyle] += 1
   for (const row of contextRows) contextCounts[row.interventionStyle] += 1
 
-  // Exploration is still globally bounded to exactly two measured attempts per
-  // recipe. Context only breaks ties, so v3 never adds a second exploration
-  // programme for low, medium and high intensity.
+  // Exploration stays globally bounded to exactly two measured attempts per
+  // recipe. State Fingerprint never creates extra mandatory trials.
   const exploreStyle = INTERVENTION_STYLES
     .map((style, order) => ({
       style,
@@ -158,6 +221,7 @@ export function getInterventionPlan(focus = 'general', intensityBefore = null) {
       styleSamples: exploreStyle.samples,
       contextBand,
       contextSamples: contextRows.length,
+      fingerprintSamples: 0,
       counts,
       contextCounts,
     }
@@ -167,18 +231,33 @@ export function getInterventionPlan(focus = 'general', intensityBefore = null) {
   const contextualGroups = contextBand
     ? groupScore(contextRows, 'interventionStyle', MIN_STYLE_OPTION_SAMPLES)
     : []
+  const fingerprintGroups = normalizedFingerprint && contextBand
+    ? weightedFingerprintScore(contextRows, normalizedFingerprint)
+    : []
 
-  // Context may override the global recipe only when at least two different
-  // recipes each have two measured outcomes in this same intensity band. This
-  // prevents one lucky result from becoming a personalised rule.
+  // Fingerprint may override intensity context only when at least two recipes
+  // each have two nearby measured outcomes in the same intensity band. Nearby
+  // means Manhattan distance <= 2 across the three 0/1/2 state dimensions.
+  const useFingerprint = fingerprintGroups.length >= MIN_FINGERPRINT_STYLES
   const useContext = contextualGroups.length >= MIN_CONTEXT_STYLES
-  const best = useContext ? contextualGroups[0] : globalBest
-  const evidenceRows = useContext ? contextRows : rows
+  const best = useFingerprint
+    ? fingerprintGroups[0]
+    : useContext
+      ? contextualGroups[0]
+      : globalBest
+
+  const fingerprintRows = normalizedFingerprint && contextBand
+    ? contextRows.filter((item) => {
+        const distance = stateFingerprintDistance(item.stateFingerprint, normalizedFingerprint)
+        return distance !== null && distance <= MAX_FINGERPRINT_DISTANCE
+      })
+    : []
+  const evidenceRows = useFingerprint ? fingerprintRows : useContext ? contextRows : rows
 
   return {
     style: best?.value || 'balanced',
     phase: 'learned',
-    scope: useContext ? 'context' : 'global',
+    scope: useFingerprint ? 'fingerprint' : useContext ? 'context' : 'global',
     samples: evidenceRows.length,
     totalSamples: rows.length,
     styleSamples: best?.samples || 0,
@@ -188,6 +267,9 @@ export function getInterventionPlan(focus = 'general', intensityBefore = null) {
     contextBand,
     contextSamples: contextRows.length,
     eligibleContextStyles: contextualGroups.length,
+    fingerprintSamples: fingerprintRows.length,
+    eligibleFingerprintStyles: fingerprintGroups.length,
+    fingerprintAverageDistance: useFingerprint ? fingerprintGroups[0]?.averageDistance ?? null : null,
     counts,
     contextCounts,
   }
