@@ -17,11 +17,18 @@ const FOCUS_OPTIONS = [
 const NEURO_OPTIONS = ['none', 'adhd', 'autism', 'audhd']
 const PACE_OPTIONS = ['very_slow', 'slow', 'natural', 'brisk']
 const INTERVENTION_CHOICES = ['auto', 'balanced', 'grounded', 'rehearsal']
+const FINGERPRINT_AXES = ['bodyActivation', 'thoughtLoop', 'movementNeed']
+const FINGERPRINT_LEVELS = [0, 1, 2]
+const DEFAULT_FINGERPRINT = {
+  bodyActivation: 1,
+  thoughtLoop: 1,
+  movementNeed: 1,
+}
 
 function SessionForm({ onSubmit }) {
   const { t } = useTranslation()
   const initialRecommendation = getRecommendation('general')
-  const initialInterventionPlan = getInterventionPlan('general', 5)
+  const initialInterventionPlan = getInterventionPlan('general', 5, DEFAULT_FINGERPRINT)
   const [topic, setTopic] = useState('')
   const [duration, setDuration] = useState(10)
   const [mode, setMode] = useState(initialRecommendation?.mode || 'imagery')
@@ -35,6 +42,7 @@ function SessionForm({ onSubmit }) {
   const [bellsVolume, setBellsVolume] = useState(0)
   const [musicVolume, setMusicVolume] = useState(35)
   const [intensityBefore, setIntensityBefore] = useState(5)
+  const [stateFingerprint, setStateFingerprint] = useState(DEFAULT_FINGERPRINT)
   const [paceTouched, setPaceTouched] = useState(false)
   const [modeTouched, setModeTouched] = useState(false)
   const [recommendation, setRecommendation] = useState(initialRecommendation)
@@ -44,7 +52,7 @@ function SessionForm({ onSubmit }) {
     const learned = getRecommendation(nextFocus)
     setFocus(nextFocus)
     setRecommendation(learned)
-    setInterventionPlan(getInterventionPlan(nextFocus, intensityBefore))
+    setInterventionPlan(getInterventionPlan(nextFocus, intensityBefore, stateFingerprint))
 
     // Learned settings are soft defaults only. Once the listener makes a
     // deliberate choice in this form, history no longer overrides it.
@@ -55,7 +63,13 @@ function SessionForm({ onSubmit }) {
   const handleIntensityChange = (event) => {
     const nextIntensity = Number(event.target.value)
     setIntensityBefore(nextIntensity)
-    setInterventionPlan(getInterventionPlan(focus, nextIntensity))
+    setInterventionPlan(getInterventionPlan(focus, nextIntensity, stateFingerprint))
+  }
+
+  const handleFingerprintChange = (axis, level) => {
+    const nextFingerprint = { ...stateFingerprint, [axis]: level }
+    setStateFingerprint(nextFingerprint)
+    setInterventionPlan(getInterventionPlan(focus, intensityBefore, nextFingerprint))
   }
 
   // A restless listener does better with a moving delivery than with long
@@ -64,18 +78,51 @@ function SessionForm({ onSubmit }) {
     (neuroprofile === 'adhd' || neuroprofile === 'audhd') &&
     (pace === 'slow' || pace === 'very_slow')
 
+  const autoPlanHint = () => {
+    if (interventionPlan.phase !== 'learned') {
+      return t('form.approach_auto_explore', {
+        style: t(`form.approach_${interventionPlan.style}`),
+        count: interventionPlan.styleSamples,
+      })
+    }
+    if (interventionPlan.scope === 'fingerprint') {
+      return t('form.approach_auto_fingerprint', {
+        style: t(`form.approach_${interventionPlan.style}`),
+        count: interventionPlan.fingerprintSamples,
+      })
+    }
+    if (interventionPlan.scope === 'context') {
+      return t('form.approach_auto_context', {
+        style: t(`form.approach_${interventionPlan.style}`),
+        count: interventionPlan.contextSamples,
+      })
+    }
+    return t('form.approach_auto_learned', {
+      style: t(`form.approach_${interventionPlan.style}`),
+      count: interventionPlan.samples,
+    })
+  }
+
   const handleSubmit = (e) => {
     e.preventDefault()
     if (!topic.trim()) return
 
-    // Re-read at submit time so the exact current intensity determines Auto,
-    // even if the UI state changed immediately before the button was pressed.
-    const activeInterventionPlan = getInterventionPlan(focus, intensityBefore)
+    // Re-read at submit time so the exact current state determines Auto, even
+    // if a control changed immediately before the button was pressed.
+    const activeInterventionPlan = getInterventionPlan(
+      focus,
+      intensityBefore,
+      stateFingerprint,
+    )
     const interventionStyle = interventionChoice === 'auto'
       ? activeInterventionPlan.style
       : interventionChoice
     const interventionSource = interventionChoice === 'auto'
-      ? (activeInterventionPlan.scope === 'context' ? 'context' : activeInterventionPlan.phase)
+      ? activeInterventionPlan.scope === 'fingerprint'
+        ? 'fingerprint'
+        : activeInterventionPlan.scope === 'context'
+          ? 'context'
+          : activeInterventionPlan.phase
       : 'manual'
 
     onSubmit({
@@ -92,6 +139,7 @@ function SessionForm({ onSubmit }) {
       bellsVolume,
       musicVolume,
       intensityBefore,
+      stateFingerprint,
     })
   }
 
@@ -173,17 +221,7 @@ function SessionForm({ onSubmit }) {
           ))}
         </div>
         {interventionChoice === 'auto' ? (
-          <p className="field-hint field-hint-suggest">
-            {interventionPlan.phase === 'learned'
-              ? t('form.approach_auto_learned', {
-                  style: t(`form.approach_${interventionPlan.style}`),
-                  count: interventionPlan.samples,
-                })
-              : t('form.approach_auto_explore', {
-                  style: t(`form.approach_${interventionPlan.style}`),
-                  count: interventionPlan.styleSamples,
-                })}
-          </p>
+          <p className="field-hint field-hint-suggest">{autoPlanHint()}</p>
         ) : (
           <p className="field-hint">{t('form.approach_manual_hint')}</p>
         )}
@@ -216,6 +254,28 @@ function SessionForm({ onSubmit }) {
           onChange={handleIntensityChange}
         />
         <p className="field-hint">{t('form.intensity_hint')}</p>
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">{t('form.fingerprint_label')}</label>
+        <p className="field-hint">{t('form.fingerprint_hint')}</p>
+        {FINGERPRINT_AXES.map((axis) => (
+          <div className="feedback-field" key={axis}>
+            <span>{t(`form.fingerprint_${axis}`)}</span>
+            <div className="pace-options">
+              {FINGERPRINT_LEVELS.map((level) => (
+                <button
+                  key={level}
+                  type="button"
+                  className={`age-btn ${stateFingerprint[axis] === level ? 'active' : ''}`}
+                  onClick={() => handleFingerprintChange(axis, level)}
+                >
+                  {t(`form.fingerprint_level_${level}`)}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
 
       <div className="form-group">
