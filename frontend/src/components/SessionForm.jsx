@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import VolumeSlider from './VolumeSlider'
+import { getRecommendation } from '../lib/personalAdaptation'
 import './SessionForm.css'
 
 const DURATIONS = [3, 5, 10, 15, 20]
@@ -28,6 +29,21 @@ function SessionForm({ onSubmit }) {
   const [pace, setPace] = useState('slow')
   const [bellsVolume, setBellsVolume] = useState(0)
   const [musicVolume, setMusicVolume] = useState(35)
+  const [intensityBefore, setIntensityBefore] = useState(5)
+  const [paceTouched, setPaceTouched] = useState(false)
+  const [modeTouched, setModeTouched] = useState(false)
+  const [recommendation, setRecommendation] = useState(null)
+
+  useEffect(() => {
+    const learned = getRecommendation(focus)
+    setRecommendation(learned)
+    if (!learned) return
+
+    // Learned settings are soft defaults only. Once the listener makes a
+    // deliberate choice in this form, history no longer overrides it.
+    if (!paceTouched && learned.pace) setPace(learned.pace)
+    if (!modeTouched && learned.mode) setMode(learned.mode)
+  }, [focus, paceTouched, modeTouched])
 
   // A restless listener does better with a moving delivery than with long
   // silences, so suggest it — without overriding a deliberate choice.
@@ -49,6 +65,7 @@ function SessionForm({ onSubmit }) {
       pace,
       bellsVolume,
       musicVolume,
+      intensityBefore,
     })
   }
 
@@ -61,7 +78,10 @@ function SessionForm({ onSubmit }) {
           <button
             type="button"
             className={`mode-btn ${mode === 'imagery' ? 'active' : ''}`}
-            onClick={() => setMode('imagery')}
+            onClick={() => {
+              setMode('imagery')
+              setModeTouched(true)
+            }}
           >
             <span className="mode-icon">🌿</span>
             <span className="mode-text">{t('form.mode_imagery')}</span>
@@ -69,7 +89,10 @@ function SessionForm({ onSubmit }) {
           <button
             type="button"
             className={`mode-btn ${mode === 'hypnosis' ? 'active' : ''}`}
-            onClick={() => setMode('hypnosis')}
+            onClick={() => {
+              setMode('hypnosis')
+              setModeTouched(true)
+            }}
           >
             <span className="mode-icon">🌀</span>
             <span className="mode-text">{t('form.mode_hypnosis')}</span>
@@ -97,8 +120,6 @@ function SessionForm({ onSubmit }) {
         </div>
       )}
 
-      {/* What the session is working on — gives the model a clinical shape
-          to follow, while the free-text topic below carries the specifics. */}
       <div className="form-group">
         <label className="form-label" htmlFor="focus-select">{t('form.focus_label')}</label>
         <select
@@ -113,7 +134,6 @@ function SessionForm({ onSubmit }) {
         </select>
       </div>
 
-      {/* Topic - free prompt */}
       <div className="form-group">
         <label className="form-label">{t('form.topic_label')}</label>
         <textarea
@@ -125,8 +145,24 @@ function SessionForm({ onSubmit }) {
         />
       </div>
 
-      {/* Duration and age each get a full row: both now offer five choices,
-          which do not fit side by side without wrapping awkwardly. */}
+      <div className="form-group">
+        <label className="form-label" htmlFor="intensity-before">
+          {t('form.intensity_before')}
+          <span className="bells-value">{intensityBefore}/10</span>
+        </label>
+        <input
+          id="intensity-before"
+          type="range"
+          className="bells-slider"
+          min="0"
+          max="10"
+          step="1"
+          value={intensityBefore}
+          onChange={(e) => setIntensityBefore(Number(e.target.value))}
+        />
+        <p className="field-hint">{t('form.intensity_hint')}</p>
+      </div>
+
       <div className="form-group">
         <label className="form-label">{t('form.duration_label')}</label>
         <div className="duration-options">
@@ -159,8 +195,6 @@ function SessionForm({ onSubmit }) {
         </div>
       </div>
 
-      {/* How the listener's brain works, which changes the script substantially:
-          literal language, no assumed mental imagery, no demand for stillness. */}
       <div className="form-group">
         <label className="form-label">{t('form.neuro_label')}</label>
         <div className="neuro-options">
@@ -178,8 +212,6 @@ function SessionForm({ onSubmit }) {
         <p className="field-hint">{t('form.neuro_hint')}</p>
       </div>
 
-      {/* Delivery speed: drives the voice rate, the silences, and how much the
-          model writes to fill the requested minutes. */}
       <div className="form-group">
         <label className="form-label">{t('form.pace_label')}</label>
         <div className="pace-options">
@@ -188,18 +220,25 @@ function SessionForm({ onSubmit }) {
               key={p}
               type="button"
               className={`age-btn ${pace === p ? 'active' : ''}`}
-              onClick={() => setPace(p)}
+              onClick={() => {
+                setPace(p)
+                setPaceTouched(true)
+              }}
             >
               {t(`form.pace_${p}`)}
             </button>
           ))}
         </div>
+        {recommendation && (
+          <p className="field-hint field-hint-suggest">
+            {t('form.learned_from', { count: recommendation.samples })}
+          </p>
+        )}
         {suggestFasterPace && (
           <p className="field-hint field-hint-suggest">{t('form.pace_suggest')}</p>
         )}
       </div>
 
-      {/* Ambience: bells ring on the script's pause markers, music bed sits under everything */}
       <VolumeSlider
         icon="🔔"
         label={t('form.bells_label')}
