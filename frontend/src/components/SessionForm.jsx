@@ -21,7 +21,7 @@ const INTERVENTION_CHOICES = ['auto', 'balanced', 'grounded', 'rehearsal']
 function SessionForm({ onSubmit }) {
   const { t } = useTranslation()
   const initialRecommendation = getRecommendation('general')
-  const initialInterventionPlan = getInterventionPlan('general')
+  const initialInterventionPlan = getInterventionPlan('general', 5)
   const [topic, setTopic] = useState('')
   const [duration, setDuration] = useState(10)
   const [mode, setMode] = useState(initialRecommendation?.mode || 'imagery')
@@ -44,12 +44,18 @@ function SessionForm({ onSubmit }) {
     const learned = getRecommendation(nextFocus)
     setFocus(nextFocus)
     setRecommendation(learned)
-    setInterventionPlan(getInterventionPlan(nextFocus))
+    setInterventionPlan(getInterventionPlan(nextFocus, intensityBefore))
 
     // Learned settings are soft defaults only. Once the listener makes a
     // deliberate choice in this form, history no longer overrides it.
     if (learned?.pace && !paceTouched) setPace(learned.pace)
     if (learned?.mode && !modeTouched) setMode(learned.mode)
+  }
+
+  const handleIntensityChange = (event) => {
+    const nextIntensity = Number(event.target.value)
+    setIntensityBefore(nextIntensity)
+    setInterventionPlan(getInterventionPlan(focus, nextIntensity))
   }
 
   // A restless listener does better with a moving delivery than with long
@@ -62,11 +68,14 @@ function SessionForm({ onSubmit }) {
     e.preventDefault()
     if (!topic.trim()) return
 
+    // Re-read at submit time so the exact current intensity determines Auto,
+    // even if the UI state changed immediately before the button was pressed.
+    const activeInterventionPlan = getInterventionPlan(focus, intensityBefore)
     const interventionStyle = interventionChoice === 'auto'
-      ? interventionPlan.style
+      ? activeInterventionPlan.style
       : interventionChoice
     const interventionSource = interventionChoice === 'auto'
-      ? interventionPlan.phase
+      ? (activeInterventionPlan.scope === 'context' ? 'context' : activeInterventionPlan.phase)
       : 'manual'
 
     onSubmit({
@@ -204,7 +213,7 @@ function SessionForm({ onSubmit }) {
           max="10"
           step="1"
           value={intensityBefore}
-          onChange={(e) => setIntensityBefore(Number(e.target.value))}
+          onChange={handleIntensityChange}
         />
         <p className="field-hint">{t('form.intensity_hint')}</p>
       </div>
