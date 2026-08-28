@@ -5,6 +5,7 @@ const MAX_HISTORY = 120
 const MIN_SAMPLES = 3
 const MIN_OPTION_SAMPLES = 2
 const MIN_STYLE_OPTION_SAMPLES = 2
+const MIN_CONTEXT_STYLES = 2
 
 function readHistory() {
   try {
@@ -21,6 +22,14 @@ function writeHistory(history) {
   } catch {
     // Personalization must never block a session if storage is unavailable.
   }
+}
+
+export function getIntensityBand(value) {
+  const intensity = Number(value)
+  if (!Number.isFinite(intensity)) return null
+  if (intensity <= 3) return 'low'
+  if (intensity <= 6) return 'medium'
+  return 'high'
 }
 
 export function recordCompletedSession(sessionId, settings) {
@@ -82,7 +91,7 @@ function completedForFocus(focus) {
   )
 }
 
-function groupScore(items, key) {
+function groupScore(items, key, minSamples = MIN_OPTION_SAMPLES) {
   const groups = new Map()
   for (const item of items) {
     const value = item[key]
@@ -101,7 +110,7 @@ function groupScore(items, key) {
       ) / rows.length,
       averageHelpfulness: rows.reduce((sum, row) => sum + row.helpfulness, 0) / rows.length,
     }))
-    .filter((group) => group.samples >= MIN_OPTION_SAMPLES)
+    .filter((group) => group.samples >= minSamples)
     .sort((a, b) =>
       b.averageDelta - a.averageDelta ||
       b.averageHelpfulness - a.averageHelpfulness ||
@@ -109,40 +118,78 @@ function groupScore(items, key) {
     )
 }
 
-export function getInterventionPlan(focus = 'general') {
+export function getInterventionPlan(focus = 'general', intensityBefore = null) {
   const rows = completedForFocus(focus).filter((item) =>
     INTERVENTION_STYLES.includes(item.interventionStyle)
   )
-  const counts = Object.fromEntries(INTERVENTION_STYLES.map((style) => [style, 0]))
-  for (const row of rows) counts[row.interventionStyle] += 1
+  const contextBand = getIntensityBand(intensityBefore)
+  const contextRows = contextBand
+    ? rows.filter((item) => getIntensityBand(item.intensityBefore) === contextBand)
+    : []
 
-  // Exploration is deterministic and bounded: each safe recipe gets exactly
-  // two measured attempts before outcome history is allowed to prefer one.
+  const counts = Object.fromEntries(INTERVENTION_STYLES.map((style) => [style, 0]))
+  const contextCounts = Object.fromEntries(INTERVENTION_STYLES.map((style) => [style, 0]))
+  for (const row of rows) counts[row.interventionStyle] += 1
+  for (const row of contextRows) contextCounts[row.interventionStyle] += 1
+
+  // Exploration is still globally bounded to exactly two measured attempts per
+  // recipe. Context only breaks ties, so v3 never adds a second exploration
+  // programme for low, medium and high intensity.
   const exploreStyle = INTERVENTION_STYLES
-    .map((style, order) => ({ style, order, samples: counts[style] }))
+    .map((style, order) => ({
+      style,
+      order,
+      samples: counts[style],
+      contextSamples: contextCounts[style],
+    }))
     .filter((item) => item.samples < MIN_STYLE_OPTION_SAMPLES)
-    .sort((a, b) => a.samples - b.samples || a.order - b.order)[0]
+    .sort((a, b) =>
+      a.samples - b.samples ||
+      a.contextSamples - b.contextSamples ||
+      a.order - b.order
+    )[0]
 
   if (exploreStyle) {
     return {
       style: exploreStyle.style,
       phase: 'explore',
+      scope: 'global',
       samples: rows.length,
       styleSamples: exploreStyle.samples,
+      contextBand,
+      contextSamples: contextRows.length,
       counts,
+      contextCounts,
     }
   }
 
-  const best = groupScore(rows, 'interventionStyle')[0]
+  const globalBest = groupScore(rows, 'interventionStyle', MIN_STYLE_OPTION_SAMPLES)[0]
+  const contextualGroups = contextBand
+    ? groupScore(contextRows, 'interventionStyle', MIN_STYLE_OPTION_SAMPLES)
+    : []
+
+  // Context may override the global recipe only when at least two different
+  // recipes each have two measured outcomes in this same intensity band. This
+  // prevents one lucky result from becoming a personalised rule.
+  const useContext = contextualGroups.length >= MIN_CONTEXT_STYLES
+  const best = useContext ? contextualGroups[0] : globalBest
+  const evidenceRows = useContext ? contextRows : rows
+
   return {
     style: best?.value || 'balanced',
     phase: 'learned',
-    samples: rows.length,
+    scope: useContext ? 'context' : 'global',
+    samples: evidenceRows.length,
+    totalSamples: rows.length,
     styleSamples: best?.samples || 0,
     averageDelta: best?.averageDelta || 0,
     averageHelpfulness: best?.averageHelpfulness || 0,
-    confidence: rows.length >= 12 ? 'high' : rows.length >= 8 ? 'medium' : 'early',
+    confidence: evidenceRows.length >= 12 ? 'high' : evidenceRows.length >= 8 ? 'medium' : 'early',
+    contextBand,
+    contextSamples: contextRows.length,
+    eligibleContextStyles: contextualGroups.length,
     counts,
+    contextCounts,
   }
 }
 
