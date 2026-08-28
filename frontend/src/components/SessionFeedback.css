@@ -50,6 +50,16 @@
   border-color: currentColor;
 }
 
+.feedback-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.delayed-feedback {
+  margin-bottom: 18px;
+}
+
 .session-feedback-saved {
   gap: 6px;
 }
@@ -57,4 +67,10 @@
 .feedback-privacy {
   margin: 0;
   text-align: center;
+}
+
+@media (max-width: 420px) {
+  .feedback-actions {
+    grid-template-columns: 1fr;
+  }
 }
