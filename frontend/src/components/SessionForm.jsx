@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import VolumeSlider from './VolumeSlider'
-import { getRecommendation } from '../lib/personalAdaptation'
+import { getInterventionPlan, getRecommendation } from '../lib/personalAdaptation'
 import './SessionForm.css'
 
 const DURATIONS = [3, 5, 10, 15, 20]
@@ -16,10 +16,12 @@ const FOCUS_OPTIONS = [
 ]
 const NEURO_OPTIONS = ['none', 'adhd', 'autism', 'audhd']
 const PACE_OPTIONS = ['very_slow', 'slow', 'natural', 'brisk']
+const INTERVENTION_CHOICES = ['auto', 'balanced', 'grounded', 'rehearsal']
 
 function SessionForm({ onSubmit }) {
   const { t } = useTranslation()
   const initialRecommendation = getRecommendation('general')
+  const initialInterventionPlan = getInterventionPlan('general')
   const [topic, setTopic] = useState('')
   const [duration, setDuration] = useState(10)
   const [mode, setMode] = useState(initialRecommendation?.mode || 'imagery')
@@ -28,6 +30,8 @@ function SessionForm({ onSubmit }) {
   const [focus, setFocus] = useState('general')
   const [neuroprofile, setNeuroprofile] = useState('none')
   const [pace, setPace] = useState(initialRecommendation?.pace || 'slow')
+  const [interventionChoice, setInterventionChoice] = useState('auto')
+  const [interventionPlan, setInterventionPlan] = useState(initialInterventionPlan)
   const [bellsVolume, setBellsVolume] = useState(0)
   const [musicVolume, setMusicVolume] = useState(35)
   const [intensityBefore, setIntensityBefore] = useState(5)
@@ -40,6 +44,7 @@ function SessionForm({ onSubmit }) {
     const learned = getRecommendation(nextFocus)
     setFocus(nextFocus)
     setRecommendation(learned)
+    setInterventionPlan(getInterventionPlan(nextFocus))
 
     // Learned settings are soft defaults only. Once the listener makes a
     // deliberate choice in this form, history no longer overrides it.
@@ -56,6 +61,14 @@ function SessionForm({ onSubmit }) {
   const handleSubmit = (e) => {
     e.preventDefault()
     if (!topic.trim()) return
+
+    const interventionStyle = interventionChoice === 'auto'
+      ? interventionPlan.style
+      : interventionChoice
+    const interventionSource = interventionChoice === 'auto'
+      ? interventionPlan.phase
+      : 'manual'
+
     onSubmit({
       topic: topic.trim(),
       duration,
@@ -65,6 +78,8 @@ function SessionForm({ onSubmit }) {
       focus,
       neuroprofile,
       pace,
+      interventionStyle,
+      interventionSource,
       bellsVolume,
       musicVolume,
       intensityBefore,
@@ -132,6 +147,37 @@ function SessionForm({ onSubmit }) {
             <option key={f} value={f}>{t(`form.focus_${f}`)}</option>
           ))}
         </select>
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">{t('form.approach_label')}</label>
+        <div className="pace-options">
+          {INTERVENTION_CHOICES.map((choice) => (
+            <button
+              key={choice}
+              type="button"
+              className={`age-btn ${interventionChoice === choice ? 'active' : ''}`}
+              onClick={() => setInterventionChoice(choice)}
+            >
+              {t(`form.approach_${choice}`)}
+            </button>
+          ))}
+        </div>
+        {interventionChoice === 'auto' ? (
+          <p className="field-hint field-hint-suggest">
+            {interventionPlan.phase === 'learned'
+              ? t('form.approach_auto_learned', {
+                  style: t(`form.approach_${interventionPlan.style}`),
+                  count: interventionPlan.samples,
+                })
+              : t('form.approach_auto_explore', {
+                  style: t(`form.approach_${interventionPlan.style}`),
+                  count: interventionPlan.styleSamples,
+                })}
+          </p>
+        ) : (
+          <p className="field-hint">{t('form.approach_manual_hint')}</p>
+        )}
       </div>
 
       <div className="form-group">

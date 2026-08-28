@@ -1,7 +1,10 @@
+import { INTERVENTION_STYLES } from './interventionRecipes.js'
+
 const STORAGE_KEY = 'guided_imagery_personal_adaptation_v1'
 const MAX_HISTORY = 120
 const MIN_SAMPLES = 3
 const MIN_OPTION_SAMPLES = 2
+const MIN_STYLE_OPTION_SAMPLES = 2
 
 function readHistory() {
   try {
@@ -24,24 +27,34 @@ export function recordCompletedSession(sessionId, settings) {
   if (!sessionId || !settings) return
   const history = readHistory()
   const index = history.findIndex((item) => item.sessionId === sessionId)
-  const entry = {
+  const settingsOnly = {
     sessionId,
-    createdAt: Date.now(),
     focus: settings.focus || 'general',
     mode: settings.mode || 'imagery',
     pace: settings.pace || 'slow',
     duration: settings.duration || 10,
     neuroprofile: settings.neuroprofile || 'none',
     ageGroup: settings.ageGroup || 'adult',
+    interventionStyle: INTERVENTION_STYLES.includes(settings.interventionStyle)
+      ? settings.interventionStyle
+      : null,
+    interventionSource: settings.interventionSource || null,
     intensityBefore: Number.isFinite(settings.intensityBefore)
       ? settings.intensityBefore
       : null,
-    intensityAfter: null,
-    helpfulness: null,
   }
 
-  if (index >= 0) history[index] = { ...history[index], ...entry }
-  else history.push(entry)
+  // Re-recording the same rendered session must not erase feedback that may
+  // already have been saved by the listener.
+  if (index >= 0) history[index] = { ...history[index], ...settingsOnly }
+  else {
+    history.push({
+      ...settingsOnly,
+      createdAt: Date.now(),
+      intensityAfter: null,
+      helpfulness: null,
+    })
+  }
   writeHistory(history)
 }
 
@@ -73,6 +86,7 @@ function groupScore(items, key) {
   const groups = new Map()
   for (const item of items) {
     const value = item[key]
+    if (value === null || value === undefined || value === '') continue
     if (!groups.has(value)) groups.set(value, [])
     groups.get(value).push(item)
   }
@@ -93,6 +107,43 @@ function groupScore(items, key) {
       b.averageHelpfulness - a.averageHelpfulness ||
       b.samples - a.samples
     )
+}
+
+export function getInterventionPlan(focus = 'general') {
+  const rows = completedForFocus(focus).filter((item) =>
+    INTERVENTION_STYLES.includes(item.interventionStyle)
+  )
+  const counts = Object.fromEntries(INTERVENTION_STYLES.map((style) => [style, 0]))
+  for (const row of rows) counts[row.interventionStyle] += 1
+
+  // Exploration is deterministic and bounded: each safe recipe gets exactly
+  // two measured attempts before outcome history is allowed to prefer one.
+  const exploreStyle = INTERVENTION_STYLES
+    .map((style, order) => ({ style, order, samples: counts[style] }))
+    .filter((item) => item.samples < MIN_STYLE_OPTION_SAMPLES)
+    .sort((a, b) => a.samples - b.samples || a.order - b.order)[0]
+
+  if (exploreStyle) {
+    return {
+      style: exploreStyle.style,
+      phase: 'explore',
+      samples: rows.length,
+      styleSamples: exploreStyle.samples,
+      counts,
+    }
+  }
+
+  const best = groupScore(rows, 'interventionStyle')[0]
+  return {
+    style: best?.value || 'balanced',
+    phase: 'learned',
+    samples: rows.length,
+    styleSamples: best?.samples || 0,
+    averageDelta: best?.averageDelta || 0,
+    averageHelpfulness: best?.averageHelpfulness || 0,
+    confidence: rows.length >= 12 ? 'high' : rows.length >= 8 ? 'medium' : 'early',
+    counts,
+  }
 }
 
 export function getRecommendation(focus = 'general') {
