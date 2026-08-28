@@ -1,0 +1,60 @@
+.session-feedback {
+  display: grid;
+  gap: 18px;
+}
+
+.feedback-heading {
+  display: grid;
+  gap: 6px;
+}
+
+.feedback-heading span,
+.feedback-privacy,
+.session-feedback-saved span {
+  opacity: 0.72;
+  font-size: 0.92rem;
+}
+
+.feedback-field {
+  display: grid;
+  gap: 10px;
+}
+
+.feedback-field label {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.feedback-value {
+  font-variant-numeric: tabular-nums;
+}
+
+.feedback-score-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+
+.feedback-score {
+  min-height: 42px;
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.15));
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.feedback-score.active {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: currentColor;
+}
+
+.session-feedback-saved {
+  gap: 6px;
+}
+
+.feedback-privacy {
+  margin: 0;
+  text-align: center;
+}
